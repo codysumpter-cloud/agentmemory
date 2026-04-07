@@ -2,9 +2,12 @@
   "name": "agentmemory",
   "version": "0.7.6",
   "description": "Persistent memory for AI coding agents -- captures tool usage, compresses via LLM, injects context into future sessions. 12 hooks, 43 MCP tools, 4 skills, real-time viewer.",
-  "author": "Rohit Ghumare",
+  "author": {
+    "name": "Rohit Ghumare",
+    "url": "https://github.com/rohitg00"
+  },
   "license": "Apache-2.0",
   "homepage": "https://github.com/rohitg00/agentmemory",
-  "hooks": "../hooks/hooks.json",
-  "skills": "../skills/"
+  "repository": "https://github.com/rohitg00/agentmemory",
+  "skills": ["../skills/recall", "../skills/remember", "../skills/session-history", "../skills/forget"]
 }
