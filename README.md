@@ -3,8 +3,8 @@
 </p>
 
 <p align="center">
-  <strong>Persistent memory for AI coding agents.</strong><br/>
-  Powered by <a href="https://iii.dev">iii-engine</a>.
+  <strong>Your coding agent remembers everything. No more re-explaining.</strong><br/>
+  Persistent memory for Claude Code, Cursor, Gemini CLI, OpenCode, and any MCP client.
 </p>
 
 <p align="center">
@@ -26,9 +26,11 @@
 
 ---
 
-Every AI coding agent has the same blind spot. Session ends, memory vanishes. You re-explain architecture. You re-discover bugs. You re-teach preferences. Built-in memory files like CLAUDE.md and .cursorrules are 200-line sticky notes that overflow and go stale. agentmemory replaces that with a searchable, versioned, cross-agent database — 43 MCP tools, triple-stream retrieval (BM25 + vector + knowledge graph), 4-tier memory consolidation, provenance-tracked citations, and cascading staleness so retired facts never pollute your context again. One instance serves Claude Code, Cursor, Codex, Windsurf, and any MCP client simultaneously. 646 tests. Zero external DB dependencies.
+You explain the same architecture every session. You re-discover the same bugs. You re-teach the same preferences. Built-in memory (CLAUDE.md, .cursorrules) caps out at 200 lines and goes stale. agentmemory fixes this — it silently captures what your agent does, compresses it into searchable memory, and injects the right context when the next session starts. One command. Works across agents.
 
-The result is measurable. On LongMemEval-S (ICLR 2025, 500 questions), agentmemory achieves **95.2% Recall@5** and **98.6% Recall@10** with hybrid BM25+vector search — within 1.4pp of raw vector baselines while using 92% fewer tokens than dumping everything into context. When an agent searches "database performance optimization," it finds the N+1 fix you made three weeks ago — something keyword grep literally cannot do. Memories version automatically, supersede each other, propagate staleness to related graph nodes, and sync across agent instances via P2P mesh. Your agents stop repeating mistakes. Your context stays clean. Your sessions start fast.
+**What changes:** Session 1 you set up JWT auth. Session 2 you ask for rate limiting — the agent already knows your auth uses jose middleware in `src/middleware/auth.ts`, your tests cover token validation, and you chose jose over jsonwebtoken for Edge compatibility. No re-explaining. No copy-pasting. The agent just *knows*.
+
+**95.2% retrieval accuracy** on [LongMemEval](https://arxiv.org/abs/2410.10813) (ICLR 2025). 43 MCP tools. 12 hooks. Real-time viewer. Works with Claude Code, Cursor, Gemini CLI, OpenCode, and any MCP client. 646 tests. Zero external DB dependencies.
 
 ```bash
 npx @agentmemory/agentmemory   # installs iii-engine if missing, starts everything
@@ -38,7 +40,7 @@ npx @agentmemory/agentmemory   # installs iii-engine if missing, starts everythi
 
 ## Why agentmemory
 
-AI coding agents forget everything between sessions. You explain the same architecture, re-discover the same patterns, and re-learn the same preferences every time. agentmemory fixes that.
+Every coding agent forgets everything when the session ends. You waste the first 5 minutes of every session re-explaining your stack, your conventions, your recent decisions. agentmemory runs in the background and eliminates that entirely.
 
 ```
 Session 1: "Add auth to the API"
@@ -47,14 +49,13 @@ Session 1: "Add auth to the API"
   Session ends -> observations compressed into structured memory
 
 Session 2: "Now add rate limiting"
-  agentmemory injects context from Session 1:
+  Agent already knows:
     - Auth uses JWT middleware in src/middleware/auth.ts
     - Tests in test/auth.test.ts cover token validation
-    - Decision: chose jose over jsonwebtoken for Edge compatibility
-  Agent starts with full project awareness
+    - You chose jose over jsonwebtoken for Edge compatibility
+    - The rate limit discussion from last week's debugging session
+  Zero re-explaining. Starts working immediately.
 ```
-
-No manual notes. No copy-pasting. The agent just *knows*.
 
 ### What it gives you
 
