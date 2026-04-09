@@ -102,9 +102,11 @@ export function startViewerServer(
     ) {
       const base = dirname(fileURLToPath(import.meta.url));
       const candidates = [
-        join(base, "..", "src", "viewer", "index.html"),
-        join(base, "..", "viewer", "index.html"),
+        join(base, "index.html"),
         join(base, "viewer", "index.html"),
+        join(base, "..", "viewer", "index.html"),
+        join(base, "..", "src", "viewer", "index.html"),
+        join(base, "..", "dist", "viewer", "index.html"),
       ];
       for (const p of candidates) {
         try {
