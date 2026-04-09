@@ -68,6 +68,7 @@ Start the memory server first: `npx @agentmemory/agentmemory`
 |---|---|
 | **Cursor** | Add to `~/.cursor/mcp.json`: `{"mcpServers": {"agentmemory": {"command": "npx", "args": ["agentmemory-mcp"]}}}` |
 | **Gemini CLI** | `gemini mcp add agentmemory -- npx agentmemory-mcp` |
+| **Hermes Agent** | Add to `~/.hermes/config.yaml`: `mcp_servers: {agentmemory: {command: npx, args: ["agentmemory-mcp"]}}` or use the [memory provider plugin](integrations/hermes/) |
 | **OpenCode** | Add to `.opencode/config.json`: `{"mcpServers": {"agentmemory": {"command": "npx", "args": ["agentmemory-mcp"]}}}` |
 | **Claude Desktop** | Add to `claude_desktop_config.json`: `{"mcpServers": {"agentmemory": {"command": "npx", "args": ["agentmemory-mcp"]}}}` |
 | **Any agent (32+)** | `npx skillkit install agentmemory` |
