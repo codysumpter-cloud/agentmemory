@@ -1,5 +1,6 @@
 import type { ISdk } from "iii-sdk";
 import { getContext } from "iii-sdk";
+import { readFileSync } from "node:fs";
 import type {
   RawObservation,
   CompressedObservation,
@@ -12,6 +13,7 @@ import {
   COMPRESSION_SYSTEM,
   buildCompressionPrompt,
 } from "../prompts/compression.js";
+import { VISION_DESCRIPTION_PROMPT } from "../prompts/vision.js";
 import { getXmlTag, getXmlChildren } from "../prompts/xml.js";
 import { getSearchIndex } from "./search.js";
 import { CompressOutputSchema } from "../eval/schemas.js";
@@ -34,6 +36,7 @@ const VALID_TYPES = new Set<string>([
   "subagent",
   "notification",
   "task",
+  "image",
   "other",
 ]);
 
@@ -78,11 +81,41 @@ export function registerCompressFunction(
     }) => {
       const ctx = getContext();
       const startMs = Date.now();
+
+      let imageDescription: string | undefined;
+      const hasImage = data.raw.modality === "image" || data.raw.modality === "mixed";
+
+      if (hasImage && data.raw.imageData && provider.describeImage) {
+        try {
+          let base64Data = data.raw.imageData;
+          let mimeType = "image/png";
+
+          if (!data.raw.imageData.startsWith("/9j/") && !data.raw.imageData.startsWith("iVBOR")) {
+            const fileBuffer = readFileSync(data.raw.imageData);
+            base64Data = fileBuffer.toString("base64");
+            if (data.raw.imageData.endsWith(".jpg") || data.raw.imageData.endsWith(".jpeg")) mimeType = "image/jpeg";
+            else if (data.raw.imageData.endsWith(".webp")) mimeType = "image/webp";
+            else if (data.raw.imageData.endsWith(".gif")) mimeType = "image/gif";
+          }
+
+          imageDescription = await provider.describeImage(base64Data, mimeType, VISION_DESCRIPTION_PROMPT);
+          ctx.logger.info("Image described by vision model", { obsId: data.observationId });
+        } catch (err) {
+          const msg = err instanceof Error ? err.message : String(err);
+          ctx.logger.warn("Vision model call failed, falling back to text-only compression", {
+            obsId: data.observationId,
+            error: msg,
+          });
+        }
+      }
+
       const prompt = buildCompressionPrompt({
         hookType: data.raw.hookType,
         toolName: data.raw.toolName,
         toolInput: data.raw.toolInput,
-        toolOutput: data.raw.toolOutput,
+        toolOutput: imageDescription
+          ? `[Image Description]: ${imageDescription}\n\n${data.raw.toolOutput ?? ""}`
+          : data.raw.toolOutput,
         userPrompt: data.raw.userPrompt,
         timestamp: data.raw.timestamp,
       });
@@ -130,6 +163,9 @@ export function registerCompressFunction(
           timestamp: data.raw.timestamp,
           ...parsed,
           confidence: qualityScore / 100,
+          ...(hasImage ? { modality: data.raw.modality } : {}),
+          ...(imageDescription ? { imageDescription } : {}),
+          ...(data.raw.imageData ? { imageRef: data.raw.imageData } : {}),
         };
 
         await kv.set(

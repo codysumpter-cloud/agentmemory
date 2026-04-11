@@ -17,6 +17,7 @@ async function main() {
 		return;
 	}
 	const sessionId = data.session_id || "unknown";
+	const { imageData, cleanOutput } = extractImageData(data.tool_output);
 	try {
 		await fetch(`${REST_URL}/agentmemory/observe`, {
 			method: "POST",
@@ -30,12 +31,39 @@ async function main() {
 				data: {
 					tool_name: data.tool_name,
 					tool_input: data.tool_input,
-					tool_output: truncate(data.tool_output, 8e3)
+					tool_output: truncate(cleanOutput, 8e3),
+					...imageData ? { image_data: imageData } : {}
 				}
 			}),
 			signal: AbortSignal.timeout(3e3)
 		});
 	} catch {}
+}
+function isBase64Image(val) {
+	return typeof val === "string" && (val.startsWith("data:image/") || val.startsWith("iVBORw0KGgo") || val.startsWith("/9j/"));
+}
+function extractImageData(output) {
+	if (isBase64Image(output)) return {
+		imageData: output,
+		cleanOutput: "[image data extracted]"
+	};
+	if (typeof output === "object" && output !== null && !Array.isArray(output)) {
+		const obj = output;
+		let imageData;
+		const clean = {};
+		for (const [key, val] of Object.entries(obj)) if (!imageData && isBase64Image(val)) {
+			imageData = val;
+			clean[key] = "[image data extracted]";
+		} else clean[key] = val;
+		return {
+			imageData,
+			cleanOutput: clean
+		};
+	}
+	return {
+		imageData: void 0,
+		cleanOutput: output
+	};
 }
 function truncate(value, max) {
 	if (typeof value === "string" && value.length > max) return value.slice(0, max) + "\n[...truncated]";

@@ -7,6 +7,29 @@ import { stripPrivateData } from "./privacy.js";
 import { DedupMap } from "./dedup.js";
 import { withKeyedLock } from "../state/keyed-mutex.js";
 
+export function extractImage(d: unknown): string | undefined {
+  if (!d) return undefined;
+  if (typeof d === "string") {
+    if (d.startsWith("data:image/") || d.startsWith("iVBORw0KGgo") || d.startsWith("/9j/")) {
+      return d;
+    }
+    return undefined;
+  }
+  if (typeof d === "object" && d !== null) {
+    const obj = d as Record<string, unknown>;
+    if (typeof obj["image_data"] === "string") return obj["image_data"];
+    if (typeof obj["image_path"] === "string") return obj["image_path"];
+    if (typeof obj["imageBase64"] === "string") return obj["imageBase64"];
+    if (typeof obj["imagePath"] === "string") return obj["imagePath"];
+    
+    for (const key of Object.keys(obj)) {
+      const match = extractImage(obj[key]);
+      if (match) return match;
+    }
+  }
+  return undefined;
+}
+
 export function registerObserveFunction(
   sdk: ISdk,
   kv: StateKV,
@@ -84,6 +107,18 @@ export function registerObserveFunction(
         }
         if (payload.hookType === "prompt_submit") {
           raw.userPrompt = d["prompt"] as string | undefined;
+        }
+
+        const hiddenImage = extractImage(sanitizedRaw);
+        if (hiddenImage) {
+          raw.modality = (raw.toolInput || raw.toolOutput || raw.userPrompt) ? "mixed" : "image";
+          
+          if (hiddenImage.startsWith("data:image/") || hiddenImage.startsWith("iVBORw0KGgo") || hiddenImage.startsWith("/9j/")) {
+            const { saveImageToDisk } = await import("../utils/image-store.js");
+            raw.imageData = saveImageToDisk(hiddenImage);
+          } else {
+            raw.imageData = hiddenImage;
+          }
         }
       }
 

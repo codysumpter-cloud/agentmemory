@@ -21,6 +21,26 @@ export class AnthropicProvider implements MemoryProvider {
     return this.call(systemPrompt, userPrompt)
   }
 
+  async describeImage(imageData: string, mimeType: string, prompt: string): Promise<string> {
+    const response = await this.client.messages.create({
+      model: this.model,
+      max_tokens: this.maxTokens,
+      messages: [{
+        role: 'user',
+        content: [
+          {
+            type: 'image',
+            source: { type: 'base64', media_type: mimeType as 'image/png' | 'image/jpeg' | 'image/gif' | 'image/webp', data: imageData },
+          },
+          { type: 'text', text: prompt },
+        ],
+      }],
+    })
+
+    const textBlock = response.content.find((b) => b.type === 'text')
+    return textBlock?.text ?? ''
+  }
+
   private async call(systemPrompt: string, userPrompt: string): Promise<string> {
     const response = await this.client.messages.create({
       model: this.model,

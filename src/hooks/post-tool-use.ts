@@ -24,6 +24,8 @@ async function main() {
 
   const sessionId = (data.session_id as string) || "unknown";
 
+  const { imageData, cleanOutput } = extractImageData(data.tool_output);
+
   try {
     await fetch(`${REST_URL}/agentmemory/observe`, {
       method: "POST",
@@ -37,14 +39,47 @@ async function main() {
         data: {
           tool_name: data.tool_name,
           tool_input: data.tool_input,
-          tool_output: truncate(data.tool_output, 8000),
+          tool_output: truncate(cleanOutput, 8000),
+          ...(imageData ? { image_data: imageData } : {}),
         },
       }),
       signal: AbortSignal.timeout(3000),
     });
   } catch {
-    // fire and forget
   }
+}
+
+function isBase64Image(val: unknown): val is string {
+  return typeof val === "string" && (
+    val.startsWith("data:image/") ||
+    val.startsWith("iVBORw0KGgo") ||
+    val.startsWith("/9j/")
+  );
+}
+
+function extractImageData(output: unknown): { imageData: string | undefined; cleanOutput: unknown } {
+  if (isBase64Image(output)) {
+    return { imageData: output, cleanOutput: "[image data extracted]" };
+  }
+
+  if (typeof output === "object" && output !== null && !Array.isArray(output)) {
+    const obj = output as Record<string, unknown>;
+    let imageData: string | undefined;
+    const clean: Record<string, unknown> = {};
+
+    for (const [key, val] of Object.entries(obj)) {
+      if (!imageData && isBase64Image(val)) {
+        imageData = val;
+        clean[key] = "[image data extracted]";
+      } else {
+        clean[key] = val;
+      }
+    }
+
+    return { imageData, cleanOutput: clean };
+  }
+
+  return { imageData: undefined, cleanOutput: output };
 }
 
 function truncate(value: unknown, max: number): unknown {

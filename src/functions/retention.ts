@@ -216,6 +216,11 @@ export function registerRetentionFunctions(
       let evicted = 0;
       for (const candidate of candidates) {
         try {
+          const mem = await kv.get<Memory>(KV.memories, candidate.memoryId);
+          if (mem && (mem as any).imageRef) {
+            const { deleteImage } = await import("../utils/image-store.js");
+            deleteImage((mem as any).imageRef);
+          }
           await kv.delete(KV.memories, candidate.memoryId);
           await kv.delete(KV.retentionScores, candidate.memoryId);
           evicted++;

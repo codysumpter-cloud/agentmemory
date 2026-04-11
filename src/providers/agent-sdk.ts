@@ -26,7 +26,8 @@ export class AgentSDKProvider implements MemoryProvider {
     let result = ''
     for await (const msg of messages) {
       if (msg.type === 'result') {
-        result = typeof msg.result === 'string' ? msg.result : JSON.stringify(msg.result)
+        const payload = (msg as any).result;
+        result = typeof payload === 'string' ? payload : JSON.stringify(payload)
       }
     }
     return result

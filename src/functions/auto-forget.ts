@@ -1,7 +1,7 @@
 import type { ISdk } from "iii-sdk";
 import { getContext } from "iii-sdk";
 import type { Memory, CompressedObservation, Session } from "../types.js";
-import { KV, jaccardSimilarity } from "../state/schema.js";
+import { KV } from "../state/schema.js";
 import { StateKV } from "../state/kv.js";
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
@@ -46,6 +46,10 @@ export function registerAutoForgetFunction(sdk: ISdk, kv: StateKV): void {
             result.ttlExpired.push(mem.id);
             deletedIds.add(mem.id);
             if (!dryRun) {
+              if ((mem as any).imageRef) {
+                const { deleteImage } = await import("../utils/image-store.js");
+                deleteImage((mem as any).imageRef);
+              }
               await kv.delete(KV.memories, mem.id);
             }
           }
@@ -118,7 +122,7 @@ export function registerAutoForgetFunction(sdk: ISdk, kv: StateKV): void {
               if (!dryRun) {
                 const older =
                   new Date(memA.createdAt).getTime() <
-                  new Date(memB.createdAt).getTime()
+                    new Date(memB.createdAt).getTime()
                     ? memA
                     : memB;
                 older.isLatest = false;
@@ -149,9 +153,12 @@ export function registerAutoForgetFunction(sdk: ISdk, kv: StateKV): void {
           if (age > 180 * MS_PER_DAY && (obs.importance ?? 5) <= 2) {
             result.lowValueObs.push(obs.id);
             if (!dryRun) {
+              const { deleteImage } = await import("../utils/image-store.js");
+              if ((obs as any).imageData) deleteImage((obs as any).imageData);
+              if ((obs as any).imageRef) deleteImage((obs as any).imageRef);
               await kv
                 .delete(KV.observations(sessions[i].id), obs.id)
-                .catch(() => {});
+                .catch(() => { });
             }
           }
         }

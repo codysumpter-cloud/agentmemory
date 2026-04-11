@@ -21,6 +21,8 @@ export interface RawObservation {
   userPrompt?: string;
   assistantResponse?: string;
   raw: unknown;
+  modality?: "text" | "image" | "mixed";
+  imageData?: string;
 }
 
 export interface CompressedObservation {
@@ -36,6 +38,11 @@ export interface CompressedObservation {
   files: string[];
   importance: number;
   confidence?: number;
+  imageRef?: string;
+  imageDescription?: string;
+  imageThumbBase64?: string;
+  modality?: "text" | "image" | "mixed";
+
 }
 
 export type ObservationType =
@@ -121,6 +128,7 @@ export interface MemoryProvider {
   name: string;
   compress(systemPrompt: string, userPrompt: string): Promise<string>;
   summarize(systemPrompt: string, userPrompt: string): Promise<string>;
+  describeImage?(imageData: string, mimeType: string, prompt: string): Promise<string>;
 }
 
 export interface AgentMemoryConfig {
@@ -435,39 +443,39 @@ export interface AuditEntry {
   id: string;
   timestamp: string;
   operation:
-    | "observe"
-    | "compress"
-    | "remember"
-    | "forget"
-    | "evolve"
-    | "consolidate"
-    | "share"
-    | "delete"
-    | "import"
-    | "export"
-    | "action_create"
-    | "action_update"
-    | "lease_acquire"
-    | "lease_release"
-    | "routine_run"
-    | "signal_send"
-    | "checkpoint_resolve"
-    | "mesh_sync"
-    | "sentinel_create"
-    | "sentinel_trigger"
-    | "sketch_create"
-    | "sketch_promote"
-    | "sketch_discard"
-    | "crystallize"
-    | "diagnose"
-    | "heal"
-    | "facet_tag"
-    | "lesson_save"
-    | "lesson_recall"
-    | "lesson_strengthen"
-    | "obsidian_export"
-    | "reflect"
-    | "insight_search";
+  | "observe"
+  | "compress"
+  | "remember"
+  | "forget"
+  | "evolve"
+  | "consolidate"
+  | "share"
+  | "delete"
+  | "import"
+  | "export"
+  | "action_create"
+  | "action_update"
+  | "lease_acquire"
+  | "lease_release"
+  | "routine_run"
+  | "signal_send"
+  | "checkpoint_resolve"
+  | "mesh_sync"
+  | "sentinel_create"
+  | "sentinel_trigger"
+  | "sketch_create"
+  | "sketch_promote"
+  | "sketch_discard"
+  | "crystallize"
+  | "diagnose"
+  | "heal"
+  | "facet_tag"
+  | "lesson_save"
+  | "lesson_recall"
+  | "lesson_strengthen"
+  | "obsidian_export"
+  | "reflect"
+  | "insight_search";
   userId?: string;
   functionId: string;
   targetIds: string[];

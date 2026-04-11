@@ -1211,10 +1211,11 @@ export function registerApiTriggers(
     async (req: ApiRequest): Promise<Response> => {
       const authErr = checkAuth(req, secret);
       if (authErr) return authErr;
-      if (!req.body?.name) {
+      const body = req.body as Record<string, unknown>;
+      if (!body?.name) {
         return { status_code: 400, body: { error: "name is required" } };
       }
-      const result = await sdk.trigger("mem::routine-create", req.body);
+      const result = await sdk.trigger("mem::routine-create", body);
       return { status_code: 201, body: result };
     },
   );

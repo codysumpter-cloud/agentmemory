@@ -94,6 +94,9 @@ export function registerEvictFunction(sdk: ISdk, kv: StateKV): void {
           ) {
             stats.lowImportanceObs++;
             if (!dryRun) {
+              const { deleteImage } = await import("../utils/image-store.js");
+              if ((o as any).imageData) deleteImage((o as any).imageData);
+              if ((o as any).imageRef) deleteImage((o as any).imageRef);
               await kv
                 .delete(KV.observations(session.id), o.id)
                 .catch(() => {});
@@ -119,6 +122,9 @@ export function registerEvictFunction(sdk: ISdk, kv: StateKV): void {
           stats.capEvictions += toEvict.length;
           if (!dryRun) {
             for (const o of toEvict) {
+              const { deleteImage } = await import("../utils/image-store.js");
+              if ((o as any).imageData) deleteImage((o as any).imageData);
+              if ((o as any).imageRef) deleteImage((o as any).imageRef);
               await kv
                 .delete(KV.observations(o.sessionId), o.id)
                 .catch(() => {});
@@ -136,6 +142,10 @@ export function registerEvictFunction(sdk: ISdk, kv: StateKV): void {
             stats.expiredMemories++;
             evictedMemIds.add(mem.id);
             if (!dryRun) {
+              if ((mem as any).imageRef) {
+                const { deleteImage } = await import("../utils/image-store.js");
+                deleteImage((mem as any).imageRef);
+              }
               await kv.delete(KV.memories, mem.id).catch(() => {});
             }
           }
@@ -150,6 +160,10 @@ export function registerEvictFunction(sdk: ISdk, kv: StateKV): void {
           if (age > cfg.lowImportanceMaxDays * MS_PER_DAY) {
             stats.nonLatestMemories++;
             if (!dryRun) {
+              if ((mem as any).imageRef) {
+                const { deleteImage } = await import("../utils/image-store.js");
+                deleteImage((mem as any).imageRef);
+              }
               await kv.delete(KV.memories, mem.id).catch(() => {});
             }
           }
