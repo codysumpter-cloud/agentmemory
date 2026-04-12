@@ -35,11 +35,7 @@ interface EvictionStats {
 }
 
 export function registerEvictFunction(sdk: ISdk, kv: StateKV): void {
-  sdk.registerFunction(
-    {
-      id: "mem::evict",
-      description: "Evict stale memories based on age and importance",
-    },
+  sdk.registerFunction("mem::evict", 
     async (data: { dryRun?: boolean }): Promise<EvictionStats> => {
       const ctx = getContext();
       const dryRun = data?.dryRun ?? false;

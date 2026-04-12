@@ -18,11 +18,7 @@ function isAllowedPath(dbPath: string): boolean {
 }
 
 export function registerMigrateFunction(sdk: ISdk, kv: StateKV): void {
-  sdk.registerFunction(
-    {
-      id: "mem::migrate",
-      description: "Import data from SQLite database",
-    },
+  sdk.registerFunction("mem::migrate", 
     async (data: { dbPath: string }) => {
       const ctx = getContext();
       ctx.logger.info("Migration started", { dbPath: data.dbPath });

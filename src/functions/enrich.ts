@@ -16,12 +16,7 @@ function escapeXml(s: string): string {
 }
 
 export function registerEnrichFunction(sdk: ISdk, kv: StateKV): void {
-  sdk.registerFunction(
-    {
-      id: "mem::enrich",
-      description:
-        "Aggregate file context, relevant observations, and bug memories for pre-tool enrichment",
-    },
+  sdk.registerFunction("mem::enrich", 
     async (data: {
       sessionId: string;
       files: string[];

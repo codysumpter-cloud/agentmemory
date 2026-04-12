@@ -39,8 +39,9 @@ describe("skill-extract", () => {
     mockKv.list.mockResolvedValue([]);
 
     handlers = {};
-    mockSdk.registerFunction.mockImplementation((meta: any, handler: any) => {
-      handlers[meta.id] = handler;
+    mockSdk.registerFunction.mockImplementation((idOrMeta: any, handler: any) => {
+      const id = typeof idOrMeta === "string" ? idOrMeta : idOrMeta.id;
+      handlers[id] = handler;
     });
 
     registerSkillExtractFunctions(mockSdk as any, mockKv as any, mockProvider);

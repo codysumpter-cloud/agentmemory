@@ -1,6 +1,5 @@
-import type { ISdk } from "iii-sdk";
-import { getContext } from "iii-sdk";
-import type { RawObservation, HookPayload, Session } from "../types.js";
+import { TriggerAction, getContext, type ISdk } from "iii-sdk";
+import type { RawObservation, HookPayload } from "../types.js";
 import { KV, STREAM, generateId } from "../state/schema.js";
 import { StateKV } from "../state/kv.js";
 import { stripPrivateData } from "./privacy.js";
@@ -13,11 +12,7 @@ export function registerObserveFunction(
   dedupMap?: DedupMap,
   maxObservationsPerSession?: number,
 ): void {
-  sdk.registerFunction(
-    {
-      id: "mem::observe",
-      description: "Capture and store a tool-use observation",
-    },
+  sdk.registerFunction("mem::observe", 
     async (payload: HookPayload) => {
       const ctx = getContext();
 
@@ -104,32 +99,51 @@ export function registerObserveFunction(
           dedupMap.record(dedupHash);
         }
 
-        sdk.triggerVoid("stream::set", {
+        await sdk.trigger({
+          function_id: "stream::set",
+          payload: {
           stream_name: STREAM.name,
           group_id: STREAM.group(payload.sessionId),
           item_id: obsId,
           data: { type: "raw", observation: raw },
+          },
         });
 
-        sdk.triggerVoid("stream::set", {
-          stream_name: STREAM.name,
-          group_id: STREAM.viewerGroup,
-          item_id: obsId,
-          data: { type: "raw", observation: raw, sessionId: payload.sessionId },
+        await sdk.trigger({
+          function_id: "stream::send",
+          payload: {
+            stream_name: STREAM.name,
+            group_id: STREAM.viewerGroup,
+            id: `raw-${obsId}`,
+            event_type: "raw_observation",
+            data: { type: "raw", observation: raw, sessionId: payload.sessionId },
+          },
+          action: TriggerAction.Void(),
         });
 
-        const session = await kv.get<Session>(KV.sessions, payload.sessionId);
+        const session = await kv.get<{ observationCount?: number }>(
+          KV.sessions,
+          payload.sessionId,
+        );
         if (session) {
-          await kv.set(KV.sessions, payload.sessionId, {
-            ...session,
-            observationCount: (session.observationCount || 0) + 1,
-          });
+          await kv.update(KV.sessions, payload.sessionId, [
+            { type: "set", path: "updatedAt", value: new Date().toISOString() },
+            {
+              type: "set",
+              path: "observationCount",
+              value: (session.observationCount || 0) + 1,
+            },
+          ]);
         }
 
-        sdk.triggerVoid("mem::compress", {
+        await sdk.trigger({
+          function_id: "mem::compress",
+          payload: {
           observationId: obsId,
           sessionId: payload.sessionId,
           raw,
+          },
+          action: TriggerAction.Void(),
         });
 
         ctx.logger.info("Observation captured", {

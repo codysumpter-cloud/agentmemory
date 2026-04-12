@@ -1,5 +1,4 @@
-import type { ISdk } from "iii-sdk";
-import { getContext } from "iii-sdk";
+import { TriggerAction, getContext, type ISdk } from "iii-sdk";
 import type {
   RawObservation,
   CompressedObservation,
@@ -66,11 +65,7 @@ export function registerCompressFunction(
   provider: MemoryProvider,
   metricsStore?: MetricsStore,
 ): void {
-  sdk.registerFunction(
-    {
-      id: "mem::compress",
-      description: "Compress a raw observation using LLM",
-    },
+  sdk.registerFunction("mem::compress", 
     async (data: {
       observationId: string;
       sessionId: string;
@@ -140,22 +135,30 @@ export function registerCompressFunction(
 
         getSearchIndex().add(compressed);
 
-        sdk.triggerVoid("stream::set", {
+        await sdk.trigger({
+          function_id: "stream::set",
+          payload: {
           stream_name: STREAM.name,
           group_id: STREAM.group(data.sessionId),
           item_id: data.observationId,
           data: { type: "compressed", observation: compressed },
+          },
         });
 
-        sdk.triggerVoid("stream::set", {
-          stream_name: STREAM.name,
-          group_id: STREAM.viewerGroup,
-          item_id: data.observationId,
-          data: {
-            type: "compressed",
-            observation: compressed,
-            sessionId: data.sessionId,
+        await sdk.trigger({
+          function_id: "stream::send",
+          payload: {
+            stream_name: STREAM.name,
+            group_id: STREAM.viewerGroup,
+            id: `compressed-${data.observationId}`,
+            event_type: "compressed_observation",
+            data: {
+              type: "compressed",
+              observation: compressed,
+              sessionId: data.sessionId,
+            },
           },
+          action: TriggerAction.Void(),
         });
 
         const latencyMs = Date.now() - startMs;

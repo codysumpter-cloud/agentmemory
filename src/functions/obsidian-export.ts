@@ -197,8 +197,7 @@ export function registerObsidianExportFunction(
   sdk: ISdk,
   kv: StateKV,
 ): void {
-  sdk.registerFunction(
-    { id: "mem::obsidian-export" },
+  sdk.registerFunction("mem::obsidian-export", 
     async (data: { vaultDir?: string; types?: string[] }) => {
       const vaultDir = resolveVaultDir(data.vaultDir);
       if (!vaultDir) {

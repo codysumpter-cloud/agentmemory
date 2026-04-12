@@ -20,8 +20,7 @@ export function registerCrystallizeFunction(
   kv: StateKV,
   provider: MemoryProvider,
 ): void {
-  sdk.registerFunction(
-    { id: "mem::crystallize" },
+  sdk.registerFunction("mem::crystallize", 
     async (data: {
       actionIds: string[];
       sessionId?: string;
@@ -74,15 +73,20 @@ export function registerCrystallizeFunction(
 
         await Promise.all(
           digest.lessons.map((lesson) =>
-            sdk.trigger("mem::lesson-save", {
-              content: lesson,
-              context: crystal.narrative,
-              confidence: 0.6,
-              project: data.project,
-              tags: [],
-              source: "crystal",
-              sourceIds: [crystal.id],
-            }).catch(() => {}),
+            sdk
+              .trigger({
+                function_id: "mem::lesson-save",
+                payload: {
+                  content: lesson,
+                  context: crystal.narrative,
+                  confidence: 0.6,
+                  project: data.project,
+                  tags: [],
+                  source: "crystal",
+                  sourceIds: [crystal.id],
+                },
+              })
+              .catch(() => {}),
           ),
         );
 
@@ -101,8 +105,7 @@ export function registerCrystallizeFunction(
     },
   );
 
-  sdk.registerFunction(
-    { id: "mem::crystal-list" },
+  sdk.registerFunction("mem::crystal-list", 
     async (data: {
       project?: string;
       sessionId?: string;
@@ -127,8 +130,7 @@ export function registerCrystallizeFunction(
     },
   );
 
-  sdk.registerFunction(
-    { id: "mem::crystal-get" },
+  sdk.registerFunction("mem::crystal-get", 
     async (data: { crystalId: string }) => {
       if (!data.crystalId) {
         return { success: false, error: "crystalId is required" };
@@ -143,8 +145,7 @@ export function registerCrystallizeFunction(
     },
   );
 
-  sdk.registerFunction(
-    { id: "mem::auto-crystallize" },
+  sdk.registerFunction("mem::auto-crystallize", 
     async (data: {
       olderThanDays?: number;
       project?: string;
@@ -205,10 +206,10 @@ export function registerCrystallizeFunction(
         const project = groupActions[0].project;
 
         try {
-          const result = (await sdk.trigger("mem::crystallize", {
+          const result = (await sdk.trigger({ function_id: "mem::crystallize", payload: {
             actionIds,
             project,
-          })) as { success: boolean; crystal?: Crystal };
+          } })) as { success: boolean; crystal?: Crystal };
 
           if (result.success && result.crystal) {
             crystalIds.push(result.crystal.id);

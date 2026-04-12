@@ -154,12 +154,7 @@ export function registerTemporalGraphFunctions(
   kv: StateKV,
   provider: MemoryProvider,
 ): void {
-  sdk.registerFunction(
-    {
-      id: "mem::temporal-graph-extract",
-      description:
-        "Extract temporal knowledge graph with context metadata from observations",
-    },
+  sdk.registerFunction("mem::temporal-graph-extract", 
     async (data: {
       observations: Array<{
         id: string;
@@ -280,12 +275,7 @@ export function registerTemporalGraphFunctions(
     },
   );
 
-  sdk.registerFunction(
-    {
-      id: "mem::temporal-query",
-      description:
-        "Query entity state at a specific point in time with full history",
-    },
+  sdk.registerFunction("mem::temporal-query", 
     async (data: {
       entityName: string;
       asOf?: string;
@@ -363,12 +353,7 @@ export function registerTemporalGraphFunctions(
     },
   );
 
-  sdk.registerFunction(
-    {
-      id: "mem::differential-state",
-      description:
-        "Compute state changes between two entities over time",
-    },
+  sdk.registerFunction("mem::differential-state", 
     async (data: {
       entityName: string;
       from?: string;

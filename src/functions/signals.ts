@@ -4,8 +4,7 @@ import { KV, generateId } from "../state/schema.js";
 import type { Signal } from "../types.js";
 
 export function registerSignalsFunction(sdk: ISdk, kv: StateKV): void {
-  sdk.registerFunction(
-    { id: "mem::signal-send" },
+  sdk.registerFunction("mem::signal-send", 
     async (data: {
       from: string;
       to?: string;
@@ -51,8 +50,7 @@ export function registerSignalsFunction(sdk: ISdk, kv: StateKV): void {
     },
   );
 
-  sdk.registerFunction(
-    { id: "mem::signal-read" },
+  sdk.registerFunction("mem::signal-read", 
     async (data: {
       agentId: string;
       unreadOnly?: boolean;
@@ -104,8 +102,7 @@ export function registerSignalsFunction(sdk: ISdk, kv: StateKV): void {
     },
   );
 
-  sdk.registerFunction(
-    { id: "mem::signal-threads" },
+  sdk.registerFunction("mem::signal-threads", 
     async (data: { agentId: string; limit?: number }) => {
       if (!data.agentId) {
         return { success: false, error: "agentId is required" };
@@ -166,8 +163,7 @@ export function registerSignalsFunction(sdk: ISdk, kv: StateKV): void {
     },
   );
 
-  sdk.registerFunction(
-    { id: "mem::signal-cleanup" },
+  sdk.registerFunction("mem::signal-cleanup", 
     async () => {
       const signals = await kv.list<Signal>(KV.signals);
       const now = Date.now();

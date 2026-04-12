@@ -809,6 +809,7 @@
     var wsProto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     var wsPort = params.get('wsPort') || String(parseInt(viewerPort) - 1);
     var WS_URL = wsProto + '//' + window.location.hostname + ':' + wsPort;
+    var WS_DIRECT_URL = wsProto + '//' + window.location.hostname + ':' + wsPort + '/stream/mem-live/viewer';
 
     var dateEl = document.getElementById('dateline');
     if (dateEl) dateEl.textContent = new Date().toLocaleDateString('en-US', { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' });
@@ -2793,17 +2794,25 @@
     function connectWs() {
       if (wsRetries >= WS_MAX_RETRIES) return;
       try {
+        state.ws = new WebSocket(WS_DIRECT_URL);
+        state.ws.__direct = true;
+      } catch (_) {
         state.ws = new WebSocket(WS_URL);
+        state.ws.__direct = false;
+      }
+      try {
         state.ws.onopen = function() {
           wsRetries = 0;
-          state.ws.send(JSON.stringify({
-            type: 'join',
-            data: {
-              subscriptionId: 'viewer-' + Date.now(),
-              streamName: 'mem-live',
-              groupId: 'viewer'
-            }
-          }));
+          if (!state.ws.__direct) {
+            state.ws.send(JSON.stringify({
+              type: 'join',
+              data: {
+                subscriptionId: 'viewer-' + Date.now(),
+                streamName: 'mem-live',
+                groupId: 'viewer'
+              }
+            }));
+          }
           document.getElementById('ws-status').textContent = 'live';
           document.getElementById('ws-status').className = 'ws-status connected';
         };
@@ -2812,6 +2821,8 @@
             var msg = JSON.parse(e.data);
             if (msg.type === 'stream' && msg.event) {
               handleStreamEvent(msg);
+            } else if (msg.event_type && msg.data) {
+              handleStreamEvent({ event: { type: 'event', data: msg.data, event_type: msg.event_type } });
             }
           } catch {}
         };

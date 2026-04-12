@@ -140,8 +140,7 @@ export function registerMeshFunction(
   kv: StateKV,
   meshAuthToken?: string,
 ): void {
-  sdk.registerFunction(
-    { id: "mem::mesh-register" },
+  sdk.registerFunction("mem::mesh-register", 
     async (data: {
       url: string;
       name: string;
@@ -176,16 +175,14 @@ export function registerMeshFunction(
     },
   );
 
-  sdk.registerFunction(
-    { id: "mem::mesh-list" },
+  sdk.registerFunction("mem::mesh-list", 
     async () => {
       const peers = await kv.list<MeshPeer>(KV.mesh);
       return { success: true, peers };
     },
   );
 
-  sdk.registerFunction(
-    { id: "mem::mesh-sync" },
+  sdk.registerFunction("mem::mesh-sync", 
     async (data: { peerId?: string; scopes?: string[]; direction?: "push" | "pull" | "both" }) => {
       if (!meshAuthToken) {
         return {
@@ -303,8 +300,7 @@ export function registerMeshFunction(
     },
   );
 
-  sdk.registerFunction(
-    { id: "mem::mesh-receive" },
+  sdk.registerFunction("mem::mesh-receive", 
     async (data: MeshSyncPayload) => {
       let accepted = 0;
 
@@ -332,8 +328,7 @@ export function registerMeshFunction(
     },
   );
 
-  sdk.registerFunction(
-    { id: "mem::mesh-remove" },
+  sdk.registerFunction("mem::mesh-remove", 
     async (data: { peerId: string }) => {
       if (!data.peerId) {
         return { success: false, error: "peerId is required" };

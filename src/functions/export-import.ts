@@ -29,8 +29,7 @@ import { StateKV } from "../state/kv.js";
 import { VERSION } from "../version.js";
 
 export function registerExportImportFunction(sdk: ISdk, kv: StateKV): void {
-  sdk.registerFunction(
-    { id: "mem::export", description: "Export all memory data as JSON" },
+  sdk.registerFunction("mem::export", 
     async (data?: { maxSessions?: number; offset?: number }) => {
       const ctx = getContext();
       const rawMax = Number(data?.maxSessions);
@@ -157,11 +156,7 @@ export function registerExportImportFunction(sdk: ISdk, kv: StateKV): void {
     },
   );
 
-  sdk.registerFunction(
-    {
-      id: "mem::import",
-      description: "Import memory data from JSON export",
-    },
+  sdk.registerFunction("mem::import", 
     async (data: {
       exportData: ExportData;
       strategy?: "merge" | "replace" | "skip";

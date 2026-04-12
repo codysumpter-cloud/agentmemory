@@ -66,8 +66,7 @@ export function registerConsolidateFunction(
   kv: StateKV,
   provider: MemoryProvider,
 ): void {
-  sdk.registerFunction(
-    { id: "mem::consolidate" },
+  sdk.registerFunction("mem::consolidate", 
     async (data: { project?: string; minObservations?: number }) => {
       const ctx = getContext();
       const minObs = data.minObservations ?? 10;

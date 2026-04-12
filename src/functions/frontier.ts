@@ -11,8 +11,7 @@ export interface FrontierItem {
 }
 
 export function registerFrontierFunction(sdk: ISdk, kv: StateKV): void {
-  sdk.registerFunction(
-    { id: "mem::frontier" },
+  sdk.registerFunction("mem::frontier", 
     async (data: {
       project?: string;
       agentId?: string;
@@ -117,8 +116,7 @@ export function registerFrontierFunction(sdk: ISdk, kv: StateKV): void {
     },
   );
 
-  sdk.registerFunction(
-    { id: "mem::next" },
+  sdk.registerFunction("mem::next", 
     async (data: { project?: string; agentId?: string }) => {
       const result = await sdk.trigger<
         { project?: string; agentId?: string; limit?: number },
@@ -128,11 +126,11 @@ export function registerFrontierFunction(sdk: ISdk, kv: StateKV): void {
           totalActions: number;
           totalUnblocked: number;
         }
-      >("mem::frontier", {
+      >({ function_id: "mem::frontier", payload: {
         project: data.project,
         agentId: data.agentId,
         limit: 1,
-      });
+      } });
 
       if (!result.success) {
         return {

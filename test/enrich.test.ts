@@ -52,8 +52,9 @@ function mockSdk() {
   const functions = new Map<string, Function>();
   const triggerOverrides = new Map<string, Function>();
   return {
-    registerFunction: (opts: { id: string }, handler: Function) => {
-      functions.set(opts.id, handler);
+    registerFunction: (idOrOpts: string | { id: string }, handler: Function) => {
+      const id = typeof idOrOpts === "string" ? idOrOpts : idOrOpts.id;
+      functions.set(id, handler);
     },
     registerTrigger: () => {},
     trigger: async (id: string, data: unknown) => {

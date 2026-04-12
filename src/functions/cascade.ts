@@ -4,8 +4,7 @@ import { KV } from "../state/schema.js";
 import type { Memory, GraphNode, GraphEdge } from "../types.js";
 
 export function registerCascadeFunction(sdk: ISdk, kv: StateKV): void {
-  sdk.registerFunction(
-    { id: "mem::cascade-update" },
+  sdk.registerFunction("mem::cascade-update", 
     async (data: { supersededMemoryId: string }) => {
       if (!data.supersededMemoryId || typeof data.supersededMemoryId !== "string") {
         return { success: false, error: "supersededMemoryId is required" };

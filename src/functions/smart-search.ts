@@ -13,12 +13,7 @@ export function registerSmartSearchFunction(
   kv: StateKV,
   searchFn: (query: string, limit: number) => Promise<HybridSearchResult[]>,
 ): void {
-  sdk.registerFunction(
-    {
-      id: "mem::smart-search",
-      description:
-        "Search with progressive disclosure: compact results first, expand specific IDs for full details",
-    },
+  sdk.registerFunction("mem::smart-search", 
     async (data: {
       query?: string;
       expandIds?: Array<string | { obsId: string; sessionId: string }>;

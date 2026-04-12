@@ -5,8 +5,7 @@ import { withKeyedLock } from "../state/keyed-mutex.js";
 import type { Action, ActionEdge, Sketch } from "../types.js";
 
 export function registerSketchesFunction(sdk: ISdk, kv: StateKV): void {
-  sdk.registerFunction(
-    { id: "mem::sketch-create" },
+  sdk.registerFunction("mem::sketch-create", 
     async (data: {
       title: string;
       description?: string;
@@ -35,8 +34,7 @@ export function registerSketchesFunction(sdk: ISdk, kv: StateKV): void {
     },
   );
 
-  sdk.registerFunction(
-    { id: "mem::sketch-add" },
+  sdk.registerFunction("mem::sketch-add", 
     async (data: {
       sketchId: string;
       title: string;
@@ -114,8 +112,7 @@ export function registerSketchesFunction(sdk: ISdk, kv: StateKV): void {
     },
   );
 
-  sdk.registerFunction(
-    { id: "mem::sketch-promote" },
+  sdk.registerFunction("mem::sketch-promote", 
     async (data: { sketchId: string; project?: string }) => {
       if (!data.sketchId) {
         return { success: false, error: "sketchId is required" };
@@ -153,8 +150,7 @@ export function registerSketchesFunction(sdk: ISdk, kv: StateKV): void {
     },
   );
 
-  sdk.registerFunction(
-    { id: "mem::sketch-discard" },
+  sdk.registerFunction("mem::sketch-discard", 
     async (data: { sketchId: string }) => {
       if (!data.sketchId) {
         return { success: false, error: "sketchId is required" };
@@ -194,8 +190,7 @@ export function registerSketchesFunction(sdk: ISdk, kv: StateKV): void {
     },
   );
 
-  sdk.registerFunction(
-    { id: "mem::sketch-list" },
+  sdk.registerFunction("mem::sketch-list", 
     async (data: { status?: string; project?: string }) => {
       let sketches = await kv.list<Sketch>(KV.sketches);
 
@@ -220,8 +215,7 @@ export function registerSketchesFunction(sdk: ISdk, kv: StateKV): void {
     },
   );
 
-  sdk.registerFunction(
-    { id: "mem::sketch-gc" },
+  sdk.registerFunction("mem::sketch-gc", 
     async () => {
       const sketches = await kv.list<Sketch>(KV.sketches);
       const now = Date.now();

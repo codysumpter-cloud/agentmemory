@@ -41,7 +41,7 @@ export function registerHealthMonitor(
       const result = await sdk.trigger<
         unknown,
         { workers?: HealthSnapshot["workers"] }
-      >("engine::workers::list", {});
+      >({ function_id: "engine::workers::list", payload: {} });
       if (result?.workers) workers = result.workers;
     } catch {}
 
@@ -55,7 +55,7 @@ export function registerHealthMonitor(
           await kv.get(KV.health, "_probe");
         })(),
         new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error("timeout")), KV_PROBE_TIMEOUT),
+          setTimeout(() => reject(new Error("timeout" })), KV_PROBE_TIMEOUT),
         ),
       ]);
       kvConnectivity = { status: "ok", latencyMs: Math.round((performance.now() - kvStart) * 100) / 100 };

@@ -17,8 +17,7 @@ export function registerTeamFunction(
   kv: StateKV,
   config: TeamConfig,
 ): void {
-  sdk.registerFunction(
-    { id: "mem::team-share" },
+  sdk.registerFunction("mem::team-share", 
     async (data: {
       itemId: string;
       itemType: "memory" | "pattern" | "observation";
@@ -75,8 +74,7 @@ export function registerTeamFunction(
     },
   );
 
-  sdk.registerFunction(
-    { id: "mem::team-feed" },
+  sdk.registerFunction("mem::team-feed", 
     async (data?: { limit?: number }) => {
       const limit = data?.limit || 20;
       const items = await kv.list<TeamSharedItem>(KV.teamShared(config.teamId));
@@ -93,7 +91,7 @@ export function registerTeamFunction(
     },
   );
 
-  sdk.registerFunction({ id: "mem::team-profile" }, async () => {
+  sdk.registerFunction("mem::team-profile",  async () => {
     const items = await kv.list<TeamSharedItem>(KV.teamShared(config.teamId));
 
     const members = [...new Set(items.map((i) => i.sharedBy))];

@@ -117,12 +117,7 @@ export function registerSlidingWindowFunction(
   kv: StateKV,
   provider: MemoryProvider,
 ): void {
-  sdk.registerFunction(
-    {
-      id: "mem::enrich-window",
-      description:
-        "Enrich observation using sliding window context for self-containment",
-    },
+  sdk.registerFunction("mem::enrich-window", 
     async (data: {
       observationId: string;
       sessionId: string;
@@ -208,11 +203,7 @@ export function registerSlidingWindowFunction(
     },
   );
 
-  sdk.registerFunction(
-    {
-      id: "mem::enrich-session",
-      description: "Enrich all observations in a session using sliding windows",
-    },
+  sdk.registerFunction("mem::enrich-session", 
     async (data: {
       sessionId: string;
       lookback?: number;
@@ -231,12 +222,12 @@ export function registerSlidingWindowFunction(
 
       for (const obs of toEnrich) {
         try {
-          const result = (await sdk.trigger("mem::enrich-window", {
+          const result = (await sdk.trigger({ function_id: "mem::enrich-window", payload: {
             observationId: obs.id,
             sessionId: data.sessionId,
             lookback: data.lookback ?? 3,
             lookahead: data.lookahead ?? 2,
-          })) as { success?: boolean } | undefined;
+          } })) as { success?: boolean } | undefined;
           if (result?.success) enriched++;
           else failed++;
         } catch {

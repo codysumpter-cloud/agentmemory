@@ -35,8 +35,7 @@ export function registerSnapshotFunction(
   kv: StateKV,
   snapshotDir: string,
 ): void {
-  sdk.registerFunction(
-    { id: "mem::snapshot-create" },
+  sdk.registerFunction("mem::snapshot-create", 
     async (data?: { message?: string }) => {
       const ctx = getContext();
 
@@ -119,7 +118,7 @@ export function registerSnapshotFunction(
     },
   );
 
-  sdk.registerFunction({ id: "mem::snapshot-list" }, async () => {
+  sdk.registerFunction("mem::snapshot-list",  async () => {
     try {
       if (!existsSync(join(snapshotDir, ".git"))) {
         return { snapshots: [] };
@@ -144,8 +143,7 @@ export function registerSnapshotFunction(
     }
   });
 
-  sdk.registerFunction(
-    { id: "mem::snapshot-restore" },
+  sdk.registerFunction("mem::snapshot-restore", 
     async (data: { commitHash: string }) => {
       const ctx = getContext();
       if (!data.commitHash) {

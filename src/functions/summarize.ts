@@ -43,8 +43,7 @@ export function registerSummarizeFunction(
   provider: MemoryProvider,
   metricsStore?: MetricsStore,
 ): void {
-  sdk.registerFunction(
-    { id: "mem::summarize", description: "Generate end-of-session summary" },
+  sdk.registerFunction("mem::summarize", 
     async (data: { sessionId: string }) => {
       const ctx = getContext();
       const startMs = Date.now();

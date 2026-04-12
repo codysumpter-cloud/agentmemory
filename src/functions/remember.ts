@@ -1,13 +1,11 @@
-import type { ISdk } from "iii-sdk";
-import { getContext } from "iii-sdk";
+import { TriggerAction, getContext, type ISdk } from "iii-sdk";
 import type { Memory } from "../types.js";
 import { KV, generateId, jaccardSimilarity } from "../state/schema.js";
 import { StateKV } from "../state/kv.js";
 import { withKeyedLock } from "../state/keyed-mutex.js";
 
 export function registerRememberFunction(sdk: ISdk, kv: StateKV): void {
-  sdk.registerFunction(
-    { id: "mem::remember" },
+  sdk.registerFunction("mem::remember", 
     async (data: {
       content: string;
       type?: string;
@@ -98,8 +96,12 @@ export function registerRememberFunction(sdk: ISdk, kv: StateKV): void {
         await kv.set(KV.memories, memory.id, memory);
 
         if (supersededId) {
-          sdk.triggerVoid("mem::cascade-update", {
-            supersededMemoryId: supersededId,
+          await sdk.trigger({
+            function_id: "mem::cascade-update",
+            payload: {
+              supersededMemoryId: supersededId,
+            },
+            action: TriggerAction.Void(),
           });
         }
 
@@ -112,8 +114,7 @@ export function registerRememberFunction(sdk: ISdk, kv: StateKV): void {
     },
   );
 
-  sdk.registerFunction(
-    { id: "mem::forget" },
+  sdk.registerFunction("mem::forget", 
     async (data: {
       sessionId?: string;
       observationIds?: string[];

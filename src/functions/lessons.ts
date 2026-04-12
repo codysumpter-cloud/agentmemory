@@ -16,8 +16,7 @@ function reinforceLesson(lesson: Lesson): void {
 }
 
 export function registerLessonsFunctions(sdk: ISdk, kv: StateKV): void {
-  sdk.registerFunction(
-    { id: "mem::lesson-save" },
+  sdk.registerFunction("mem::lesson-save", 
     async (data: {
       content: string;
       context?: string;
@@ -87,8 +86,7 @@ export function registerLessonsFunctions(sdk: ISdk, kv: StateKV): void {
     },
   );
 
-  sdk.registerFunction(
-    { id: "mem::lesson-recall" },
+  sdk.registerFunction("mem::lesson-recall", 
     async (data: {
       query: string;
       project?: string;
@@ -152,8 +150,7 @@ export function registerLessonsFunctions(sdk: ISdk, kv: StateKV): void {
     },
   );
 
-  sdk.registerFunction(
-    { id: "mem::lesson-list" },
+  sdk.registerFunction("mem::lesson-list", 
     async (data: {
       project?: string;
       source?: string;
@@ -181,8 +178,7 @@ export function registerLessonsFunctions(sdk: ISdk, kv: StateKV): void {
     },
   );
 
-  sdk.registerFunction(
-    { id: "mem::lesson-strengthen" },
+  sdk.registerFunction("mem::lesson-strengthen", 
     async (data: { lessonId: string }) => {
       if (!data.lessonId) {
         return { success: false, error: "lessonId is required" };
@@ -207,8 +203,7 @@ export function registerLessonsFunctions(sdk: ISdk, kv: StateKV): void {
     },
   );
 
-  sdk.registerFunction(
-    { id: "mem::lesson-decay-sweep" },
+  sdk.registerFunction("mem::lesson-decay-sweep", 
     async () => {
       const lessons = await kv.list<Lesson>(KV.lessons);
       let decayed = 0;

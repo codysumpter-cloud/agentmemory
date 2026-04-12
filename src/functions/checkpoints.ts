@@ -5,8 +5,7 @@ import { withKeyedLock } from "../state/keyed-mutex.js";
 import type { Action, ActionEdge, Checkpoint } from "../types.js";
 
 export function registerCheckpointsFunction(sdk: ISdk, kv: StateKV): void {
-  sdk.registerFunction(
-    { id: "mem::checkpoint-create" },
+  sdk.registerFunction("mem::checkpoint-create", 
     async (data: {
       name: string;
       description?: string;
@@ -72,8 +71,7 @@ export function registerCheckpointsFunction(sdk: ISdk, kv: StateKV): void {
     },
   );
 
-  sdk.registerFunction(
-    { id: "mem::checkpoint-resolve" },
+  sdk.registerFunction("mem::checkpoint-resolve", 
     async (data: {
       checkpointId: string;
       status: "passed" | "failed";
@@ -154,8 +152,7 @@ export function registerCheckpointsFunction(sdk: ISdk, kv: StateKV): void {
     },
   );
 
-  sdk.registerFunction(
-    { id: "mem::checkpoint-list" },
+  sdk.registerFunction("mem::checkpoint-list", 
     async (data: { status?: string; type?: string }) => {
       let checkpoints = await kv.list<Checkpoint>(KV.checkpoints);
 
@@ -175,8 +172,7 @@ export function registerCheckpointsFunction(sdk: ISdk, kv: StateKV): void {
     },
   );
 
-  sdk.registerFunction(
-    { id: "mem::checkpoint-expire" },
+  sdk.registerFunction("mem::checkpoint-expire", 
     async () => {
       const checkpoints = await kv.list<Checkpoint>(KV.checkpoints);
       const now = Date.now();

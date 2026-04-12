@@ -73,12 +73,7 @@ export function registerRetentionFunctions(
   sdk: ISdk,
   kv: StateKV,
 ): void {
-  sdk.registerFunction(
-    {
-      id: "mem::retention-score",
-      description:
-        "Compute retention scores for all memories using time-frequency decay",
-    },
+  sdk.registerFunction("mem::retention-score", 
     async (data: { config?: Partial<DecayConfig> }) => {
       const ctx = getContext();
       const config = { ...DEFAULT_DECAY, ...data.config };
@@ -180,12 +175,7 @@ export function registerRetentionFunctions(
     },
   );
 
-  sdk.registerFunction(
-    {
-      id: "mem::retention-evict",
-      description:
-        "Evict memories below retention threshold (tiered storage)",
-    },
+  sdk.registerFunction("mem::retention-evict", 
     async (data: {
       threshold?: number;
       dryRun?: boolean;

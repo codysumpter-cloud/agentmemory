@@ -6,8 +6,7 @@ import type { StateKV } from "../state/kv.js";
 import { recordAudit, queryAudit } from "./audit.js";
 
 export function registerGovernanceFunction(sdk: ISdk, kv: StateKV): void {
-  sdk.registerFunction(
-    { id: "mem::governance-delete" },
+  sdk.registerFunction("mem::governance-delete", 
     async (data: { memoryIds: string[]; reason?: string }) => {
       const ctx = getContext();
       if (
@@ -46,8 +45,7 @@ export function registerGovernanceFunction(sdk: ISdk, kv: StateKV): void {
     },
   );
 
-  sdk.registerFunction(
-    { id: "mem::governance-bulk" },
+  sdk.registerFunction("mem::governance-bulk", 
     async (data: GovernanceFilter & { dryRun?: boolean }) => {
       const ctx = getContext();
 
@@ -117,8 +115,7 @@ export function registerGovernanceFunction(sdk: ISdk, kv: StateKV): void {
     },
   );
 
-  sdk.registerFunction(
-    { id: "mem::audit-query" },
+  sdk.registerFunction("mem::audit-query", 
     async (data?: {
       operation?: AuditEntry["operation"];
       dateFrom?: string;

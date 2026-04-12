@@ -105,12 +105,7 @@ export function registerSkillExtractFunctions(
   kv: StateKV,
   provider: MemoryProvider,
 ): void {
-  sdk.registerFunction(
-    {
-      id: "mem::skill-extract",
-      description:
-        "Extract a reusable skill document from a completed session",
-    },
+  sdk.registerFunction("mem::skill-extract", 
     async (data: { sessionId: string }) => {
       const ctx = getContext();
       if (!data?.sessionId) {
@@ -246,11 +241,7 @@ export function registerSkillExtractFunctions(
     },
   );
 
-  sdk.registerFunction(
-    {
-      id: "mem::skill-list",
-      description: "List extracted procedural skills",
-    },
+  sdk.registerFunction("mem::skill-list", 
     async (data: { limit?: number }) => {
       const limit = data?.limit ?? 50;
       const skills = await kv.list<ProceduralMemory>(KV.procedural);
@@ -263,11 +254,7 @@ export function registerSkillExtractFunctions(
     },
   );
 
-  sdk.registerFunction(
-    {
-      id: "mem::skill-match",
-      description: "Find skills relevant to a given task description",
-    },
+  sdk.registerFunction("mem::skill-match", 
     async (data: { query: string; limit?: number }) => {
       if (!data?.query?.trim()) {
         return { success: false, error: "query is required" };

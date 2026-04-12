@@ -8,8 +8,7 @@ const DEFAULT_LEASE_TTL_MS = 10 * 60 * 1000;
 const MAX_LEASE_TTL_MS = 60 * 60 * 1000;
 
 export function registerLeasesFunction(sdk: ISdk, kv: StateKV): void {
-  sdk.registerFunction(
-    { id: "mem::lease-acquire" },
+  sdk.registerFunction("mem::lease-acquire", 
     async (data: { actionId: string; agentId: string; ttlMs?: number }) => {
       if (!data.actionId || !data.agentId) {
         return { success: false, error: "actionId and agentId are required" };
@@ -79,8 +78,7 @@ export function registerLeasesFunction(sdk: ISdk, kv: StateKV): void {
     },
   );
 
-  sdk.registerFunction(
-    { id: "mem::lease-release" },
+  sdk.registerFunction("mem::lease-release", 
     async (data: { actionId: string; agentId: string; result?: string }) => {
       if (!data.actionId || !data.agentId) {
         return { success: false, error: "actionId and agentId are required" };
@@ -121,8 +119,7 @@ export function registerLeasesFunction(sdk: ISdk, kv: StateKV): void {
     },
   );
 
-  sdk.registerFunction(
-    { id: "mem::lease-renew" },
+  sdk.registerFunction("mem::lease-renew", 
     async (data: { actionId: string; agentId: string; ttlMs?: number }) => {
       if (!data.actionId || !data.agentId) {
         return { success: false, error: "actionId and agentId are required" };
@@ -158,8 +155,7 @@ export function registerLeasesFunction(sdk: ISdk, kv: StateKV): void {
     },
   );
 
-  sdk.registerFunction(
-    { id: "mem::lease-cleanup" },
+  sdk.registerFunction("mem::lease-cleanup", 
     async () => {
       const leases = await kv.list<Lease>(KV.leases);
       const now = Date.now();

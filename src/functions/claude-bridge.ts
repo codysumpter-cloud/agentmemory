@@ -74,8 +74,7 @@ export function registerClaudeBridgeFunction(
   kv: StateKV,
   config: ClaudeBridgeConfig,
 ): void {
-  sdk.registerFunction(
-    { id: "mem::claude-bridge-read" },
+  sdk.registerFunction("mem::claude-bridge-read", 
     async () => {
       const ctx = getContext();
       if (!config.enabled || !config.memoryFilePath) {
@@ -108,8 +107,7 @@ export function registerClaudeBridgeFunction(
     },
   );
 
-  sdk.registerFunction(
-    { id: "mem::claude-bridge-sync" },
+  sdk.registerFunction("mem::claude-bridge-sync", 
     async () => {
       const ctx = getContext();
       if (!config.enabled || !config.memoryFilePath) {

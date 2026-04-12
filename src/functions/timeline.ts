@@ -9,11 +9,7 @@ import { KV } from "../state/schema.js";
 import { StateKV } from "../state/kv.js";
 
 export function registerTimelineFunction(sdk: ISdk, kv: StateKV): void {
-  sdk.registerFunction(
-    {
-      id: "mem::timeline",
-      description: "Get chronological observations around an anchor point",
-    },
+  sdk.registerFunction("mem::timeline", 
     async (data: {
       anchor: string;
       project?: string;

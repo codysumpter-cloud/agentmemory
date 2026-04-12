@@ -29,11 +29,7 @@ export function stripPrivateData(input: string): string {
 }
 
 export function registerPrivacyFunction(sdk: ISdk): void {
-  sdk.registerFunction(
-    {
-      id: "mem::privacy",
-      description: "Strip private tags and secrets from input",
-    },
+  sdk.registerFunction("mem::privacy", 
     async (data: { input: string }) => {
       return { output: stripPrivateData(data.input) };
     },

@@ -31,8 +31,7 @@ const TWENTY_FOUR_HOURS_MS = 24 * 60 * 60 * 1000;
 const ONE_HOUR_MS = 60 * 60 * 1000;
 
 export function registerDiagnosticsFunction(sdk: ISdk, kv: StateKV): void {
-  sdk.registerFunction(
-    { id: "mem::diagnose" },
+  sdk.registerFunction("mem::diagnose", 
     async (data: { categories?: string[] }) => {
       const categories = data.categories && data.categories.length > 0
         ? data.categories.filter((c) => ALL_CATEGORIES.includes(c))
@@ -407,8 +406,7 @@ export function registerDiagnosticsFunction(sdk: ISdk, kv: StateKV): void {
     },
   );
 
-  sdk.registerFunction(
-    { id: "mem::heal" },
+  sdk.registerFunction("mem::heal", 
     async (data: { categories?: string[]; dryRun?: boolean }) => {
       const dryRun = data.dryRun ?? false;
       const categories = data.categories && data.categories.length > 0

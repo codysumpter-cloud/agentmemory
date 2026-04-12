@@ -18,8 +18,7 @@ interface FileHistory {
 }
 
 export function registerFileIndexFunction(sdk: ISdk, kv: StateKV): void {
-  sdk.registerFunction(
-    { id: "mem::file-context" },
+  sdk.registerFunction("mem::file-context", 
     async (data: { sessionId: string; files: string[]; project?: string }) => {
       const ctx = getContext();
       const results: FileHistory[] = [];

@@ -9,11 +9,7 @@ import { KV } from "../state/schema.js";
 import { StateKV } from "../state/kv.js";
 
 export function registerProfileFunction(sdk: ISdk, kv: StateKV): void {
-  sdk.registerFunction(
-    {
-      id: "mem::profile",
-      description: "Generate or retrieve a project profile from aggregated data",
-    },
+  sdk.registerFunction("mem::profile", 
     async (data: { project: string; refresh?: boolean }) => {
       const ctx = getContext();
 

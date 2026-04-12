@@ -14,8 +14,7 @@ const VALID_TYPES: Sentinel["type"][] = [
 ];
 
 export function registerSentinelsFunction(sdk: ISdk, kv: StateKV): void {
-  sdk.registerFunction(
-    { id: "mem::sentinel-create" },
+  sdk.registerFunction("mem::sentinel-create", 
     async (data: {
       name: string;
       type: Sentinel["type"];
@@ -141,8 +140,7 @@ export function registerSentinelsFunction(sdk: ISdk, kv: StateKV): void {
     },
   );
 
-  sdk.registerFunction(
-    { id: "mem::sentinel-trigger" },
+  sdk.registerFunction("mem::sentinel-trigger", 
     async (data: { sentinelId: string; result?: unknown }) => {
       if (!data.sentinelId) {
         return { success: false, error: "sentinelId is required" };
@@ -182,8 +180,7 @@ export function registerSentinelsFunction(sdk: ISdk, kv: StateKV): void {
     },
   );
 
-  sdk.registerFunction(
-    { id: "mem::sentinel-check" },
+  sdk.registerFunction("mem::sentinel-check", 
     async () => {
       const sentinels = await kv.list<Sentinel>(KV.sentinels);
       const active = sentinels.filter((s) => s.status === "watching");
@@ -287,8 +284,7 @@ export function registerSentinelsFunction(sdk: ISdk, kv: StateKV): void {
     },
   );
 
-  sdk.registerFunction(
-    { id: "mem::sentinel-cancel" },
+  sdk.registerFunction("mem::sentinel-cancel", 
     async (data: { sentinelId: string }) => {
       if (!data.sentinelId) {
         return { success: false, error: "sentinelId is required" };
@@ -320,8 +316,7 @@ export function registerSentinelsFunction(sdk: ISdk, kv: StateKV): void {
     },
   );
 
-  sdk.registerFunction(
-    { id: "mem::sentinel-list" },
+  sdk.registerFunction("mem::sentinel-list", 
     async (data: { status?: string; type?: string }) => {
       let sentinels = await kv.list<Sentinel>(KV.sentinels);
 
@@ -341,8 +336,7 @@ export function registerSentinelsFunction(sdk: ISdk, kv: StateKV): void {
     },
   );
 
-  sdk.registerFunction(
-    { id: "mem::sentinel-expire" },
+  sdk.registerFunction("mem::sentinel-expire", 
     async () => {
       const sentinels = await kv.list<Sentinel>(KV.sentinels);
       const now = Date.now();

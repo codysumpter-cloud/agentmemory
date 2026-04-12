@@ -35,11 +35,7 @@ function computeConfidence(
 }
 
 export function registerRelationsFunction(sdk: ISdk, kv: StateKV): void {
-  sdk.registerFunction(
-    {
-      id: "mem::relate",
-      description: "Create a relationship between memories",
-    },
+  sdk.registerFunction("mem::relate", 
     async (data: {
       sourceId: string;
       targetId: string;
@@ -100,8 +96,7 @@ export function registerRelationsFunction(sdk: ISdk, kv: StateKV): void {
     },
   );
 
-  sdk.registerFunction(
-    { id: "mem::evolve", description: "Create a new version of a memory" },
+  sdk.registerFunction("mem::evolve", 
     async (data: {
       memoryId: string;
       newContent: string;
@@ -151,11 +146,7 @@ export function registerRelationsFunction(sdk: ISdk, kv: StateKV): void {
     },
   );
 
-  sdk.registerFunction(
-    {
-      id: "mem::get-related",
-      description: "Get related memories within N hops",
-    },
+  sdk.registerFunction("mem::get-related", 
     async (data: {
       memoryId: string;
       maxHops?: number;

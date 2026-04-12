@@ -23,8 +23,7 @@ export function registerFlowCompressFunction(
   kv: StateKV,
   provider: MemoryProvider,
 ): void {
-  sdk.registerFunction(
-    { id: "mem::flow-compress" },
+  sdk.registerFunction("mem::flow-compress", 
     async (data: { runId?: string; actionIds?: string[]; project?: string }) => {
       let actionsToCompress: Action[] = [];
 

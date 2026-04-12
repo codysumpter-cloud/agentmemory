@@ -19,12 +19,7 @@ interface AutoForgetResult {
 }
 
 export function registerAutoForgetFunction(sdk: ISdk, kv: StateKV): void {
-  sdk.registerFunction(
-    {
-      id: "mem::auto-forget",
-      description:
-        "Auto-forget expired (TTL), contradictory, and low-value data",
-    },
+  sdk.registerFunction("mem::auto-forget", 
     async (data: { dryRun?: boolean }): Promise<AutoForgetResult> => {
       const ctx = getContext();
       const dryRun = data?.dryRun ?? false;

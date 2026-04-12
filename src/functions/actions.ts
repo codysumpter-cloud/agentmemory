@@ -5,8 +5,7 @@ import { withKeyedLock } from "../state/keyed-mutex.js";
 import type { Action, ActionEdge } from "../types.js";
 
 export function registerActionsFunction(sdk: ISdk, kv: StateKV): void {
-  sdk.registerFunction(
-    { id: "mem::action-create" },
+  sdk.registerFunction("mem::action-create", 
     async (data: {
       title: string;
       description?: string;
@@ -92,8 +91,7 @@ export function registerActionsFunction(sdk: ISdk, kv: StateKV): void {
     },
   );
 
-  sdk.registerFunction(
-    { id: "mem::action-update" },
+  sdk.registerFunction("mem::action-update", 
     async (data: {
       actionId: string;
       status?: Action["status"];
@@ -136,8 +134,7 @@ export function registerActionsFunction(sdk: ISdk, kv: StateKV): void {
     },
   );
 
-  sdk.registerFunction(
-    { id: "mem::action-edge-create" },
+  sdk.registerFunction("mem::action-edge-create", 
     async (data: {
       sourceActionId: string;
       targetActionId: string;
@@ -188,8 +185,7 @@ export function registerActionsFunction(sdk: ISdk, kv: StateKV): void {
     },
   );
 
-  sdk.registerFunction(
-    { id: "mem::action-list" },
+  sdk.registerFunction("mem::action-list", 
     async (data: {
       status?: string;
       project?: string;
@@ -224,8 +220,7 @@ export function registerActionsFunction(sdk: ISdk, kv: StateKV): void {
     },
   );
 
-  sdk.registerFunction(
-    { id: "mem::action-get" },
+  sdk.registerFunction("mem::action-get", 
     async (data: { actionId: string }) => {
       if (!data.actionId) {
         return { success: false, error: "actionId is required" };

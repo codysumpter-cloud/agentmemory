@@ -1,4 +1,4 @@
-import { init } from "iii-sdk";
+import { registerWorker } from "iii-sdk";
 import {
   loadConfig,
   getEnvVar,
@@ -112,7 +112,7 @@ async function main() {
   );
   console.log(`[agentmemory] Streams: ws://localhost:${config.streamsPort}`);
 
-  const sdk = init(config.engineUrl, {
+  const sdk = registerWorker(config.engineUrl, {
     workerName: "agentmemory",
     otel: {
       serviceName: OTEL_CONFIG.serviceName,
@@ -128,11 +128,18 @@ async function main() {
 
   const vectorIndex = embeddingProvider ? new VectorIndex() : null;
 
-  initMetrics(
-    typeof (sdk as any).getMeter === "function"
-      ? (sdk as any).getMeter.bind(sdk)
-      : undefined,
-  );
+  const meterAccessor =
+    "getMeter" in sdk &&
+    typeof (sdk as unknown as { getMeter?: (name: string) => unknown }).getMeter ===
+      "function"
+      ? (
+          sdk as unknown as {
+            getMeter: (name: string) => unknown;
+          }
+        ).getMeter.bind(sdk) as (name: string) => unknown
+      : undefined;
+
+  initMetrics(meterAccessor as ((name: string) => import("@opentelemetry/api").Meter) | undefined);
 
   registerPrivacyFunction(sdk);
   registerObserveFunction(sdk, kv, dedupMap, config.maxObservationsPerSession);
@@ -299,7 +306,7 @@ async function main() {
   if (process.env.AUTO_FORGET_ENABLED !== "false") {
     const autoForgetTimer = setInterval(async () => {
       try {
-        await sdk.trigger("mem::auto-forget", { dryRun: false });
+        await sdk.trigger({ function_id: "mem::auto-forget", payload: { dryRun: false } });
       } catch {}
     }, autoForgetIntervalMs);
     autoForgetTimer.unref();
@@ -309,7 +316,7 @@ async function main() {
   if (process.env.LESSON_DECAY_ENABLED !== "false") {
     const lessonDecayTimer = setInterval(async () => {
       try {
-        await sdk.trigger("mem::lesson-decay-sweep", {});
+        await sdk.trigger({ function_id: "mem::lesson-decay-sweep", payload: {} });
       } catch {}
     }, 86400000);
     lessonDecayTimer.unref();
@@ -319,7 +326,7 @@ async function main() {
   if (process.env.INSIGHT_DECAY_ENABLED !== "false") {
     const insightDecayTimer = setInterval(async () => {
       try {
-        await sdk.trigger("mem::insight-decay-sweep", {});
+        await sdk.trigger({ function_id: "mem::insight-decay-sweep", payload: {} });
       } catch {}
     }, 86400000);
     insightDecayTimer.unref();
@@ -328,7 +335,7 @@ async function main() {
   if (isConsolidationEnabled()) {
     const consolidationTimer = setInterval(async () => {
       try {
-        await sdk.trigger("mem::consolidate-pipeline", {});
+        await sdk.trigger({ function_id: "mem::consolidate-pipeline", payload: {} });
       } catch {}
     }, consolidationIntervalMs);
     consolidationTimer.unref();

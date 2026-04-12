@@ -5,8 +5,7 @@ import { withKeyedLock } from "../state/keyed-mutex.js";
 import type { Action, Routine, RoutineStep, RoutineRun } from "../types.js";
 
 export function registerRoutinesFunction(sdk: ISdk, kv: StateKV): void {
-  sdk.registerFunction(
-    { id: "mem::routine-create" },
+  sdk.registerFunction("mem::routine-create", 
     async (data: {
       name: string;
       description?: string;
@@ -64,8 +63,7 @@ export function registerRoutinesFunction(sdk: ISdk, kv: StateKV): void {
     },
   );
 
-  sdk.registerFunction(
-    { id: "mem::routine-list" },
+  sdk.registerFunction("mem::routine-list", 
     async (data: { frozen?: boolean; tags?: string[] }) => {
       let routines = await kv.list<Routine>(KV.routines);
       if (data.frozen !== undefined) {
@@ -84,8 +82,7 @@ export function registerRoutinesFunction(sdk: ISdk, kv: StateKV): void {
     },
   );
 
-  sdk.registerFunction(
-    { id: "mem::routine-run" },
+  sdk.registerFunction("mem::routine-run", 
     async (data: {
       routineId: string;
       initiatedBy?: string;
@@ -181,8 +178,7 @@ export function registerRoutinesFunction(sdk: ISdk, kv: StateKV): void {
     },
   );
 
-  sdk.registerFunction(
-    { id: "mem::routine-status" },
+  sdk.registerFunction("mem::routine-status", 
     async (data: { runId: string }) => {
       if (!data.runId) {
         return { success: false, error: "runId is required" };
@@ -268,8 +264,7 @@ export function registerRoutinesFunction(sdk: ISdk, kv: StateKV): void {
     },
   );
 
-  sdk.registerFunction(
-    { id: "mem::routine-freeze" },
+  sdk.registerFunction("mem::routine-freeze", 
     async (data: { routineId: string }) => {
       if (!data.routineId) {
         return { success: false, error: "routineId is required" };

@@ -70,12 +70,7 @@ export function registerQueryExpansionFunction(
   sdk: ISdk,
   provider: MemoryProvider,
 ): void {
-  sdk.registerFunction(
-    {
-      id: "mem::expand-query",
-      description:
-        "Generate diverse query reformulations for improved recall",
-    },
+  sdk.registerFunction("mem::expand-query", 
     async (data: { query: string; maxReformulations?: number }) => {
       const ctx = getContext();
       const maxR = data.maxReformulations ?? 5;

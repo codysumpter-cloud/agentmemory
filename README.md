@@ -295,6 +295,9 @@ npx @agentmemory/agentmemory
 
 # Terminal 2: seed sample data and see recall in action
 npx @agentmemory/agentmemory demo
+
+# Upgrade local dependencies + iii runtime (best effort)
+npx @agentmemory/agentmemory upgrade
 ```
 
 `demo` seeds 3 realistic sessions (JWT auth, N+1 query fix, rate limiting) and runs semantic searches against them. You'll see it find "N+1 query fix" when you search "database performance optimization" — keyword matching can't do that.
