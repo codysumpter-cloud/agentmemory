@@ -206,18 +206,25 @@ export function registerRetentionFunctions(
       }
 
       let evicted = 0;
+      let failed = 0;
       for (const candidate of candidates) {
         try {
           await kv.delete(candidate.sourceBucket || KV.memories, candidate.memoryId);
           await kv.delete(KV.retentionScores, candidate.memoryId);
           evicted++;
-        } catch {
-          continue;
+        } catch (err) {
+          failed++;
+          ctx.logger.warn("Retention eviction failed for candidate", {
+            memoryId: candidate.memoryId,
+            sourceBucket: candidate.sourceBucket,
+            error: err instanceof Error ? err.message : String(err),
+          });
         }
       }
 
       ctx.logger.info("Retention-based eviction complete", {
         evicted,
+        failed,
         threshold,
       });
 

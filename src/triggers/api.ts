@@ -15,6 +15,18 @@ type Response = {
   body: unknown;
 };
 
+function parseOptionalInt(raw: unknown): number | undefined {
+  if (raw === undefined || raw === null || raw === "") return undefined;
+  const n = typeof raw === "number" ? raw : parseInt(String(raw), 10);
+  return Number.isFinite(n) ? n : undefined;
+}
+
+function parseOptionalFloat(raw: unknown): number | undefined {
+  if (raw === undefined || raw === null || raw === "") return undefined;
+  const n = typeof raw === "number" ? raw : parseFloat(String(raw));
+  return Number.isFinite(n) ? n : undefined;
+}
+
 function checkAuth(
   req: ApiRequest,
   secret: string | undefined,
@@ -117,11 +129,33 @@ export function registerApiTriggers(
     },
   });
 
-  sdk.registerFunction("api::observe", 
+  sdk.registerFunction("api::observe",
     async (req: ApiRequest<HookPayload>): Promise<Response> => {
       const authErr = checkAuth(req, secret);
       if (authErr) return authErr;
-      const result = await sdk.trigger({ function_id: "mem::observe", payload: req.body });
+      const body = req.body as Partial<HookPayload> | undefined;
+      if (!body || typeof body !== "object") {
+        return { status_code: 400, body: { error: "body must be an object" } };
+      }
+      if (typeof body.hookType !== "string" || !body.hookType.trim()) {
+        return { status_code: 400, body: { error: "hookType is required and must be a string" } };
+      }
+      if (typeof body.sessionId !== "string" || !body.sessionId.trim()) {
+        return { status_code: 400, body: { error: "sessionId is required and must be a string" } };
+      }
+      if (body.timestamp !== undefined && typeof body.timestamp !== "string") {
+        return { status_code: 400, body: { error: "timestamp must be a string" } };
+      }
+      if (body.data !== undefined && (typeof body.data !== "object" || body.data === null)) {
+        return { status_code: 400, body: { error: "data must be an object" } };
+      }
+      const payload: HookPayload = {
+        hookType: body.hookType,
+        sessionId: body.sessionId,
+        timestamp: body.timestamp ?? new Date().toISOString(),
+        data: body.data ?? {},
+      };
+      const result = await sdk.trigger({ function_id: "mem::observe", payload });
       return { status_code: 201, body: result };
     },
   );
@@ -135,13 +169,31 @@ export function registerApiTriggers(
     },
   });
 
-  sdk.registerFunction("api::context", 
+  sdk.registerFunction("api::context",
     async (
       req: ApiRequest<{ sessionId: string; project: string; budget?: number }>,
     ): Promise<Response> => {
       const authErr = checkAuth(req, secret);
       if (authErr) return authErr;
-      const result = await sdk.trigger({ function_id: "mem::context", payload: req.body });
+      const body = (req.body ?? {}) as Record<string, unknown>;
+      if (typeof body.sessionId !== "string" || !body.sessionId.trim()) {
+        return { status_code: 400, body: { error: "sessionId is required and must be a string" } };
+      }
+      if (typeof body.project !== "string" || !body.project.trim()) {
+        return { status_code: 400, body: { error: "project is required and must be a string" } };
+      }
+      if (
+        body.budget !== undefined &&
+        (!Number.isInteger(body.budget) || (body.budget as number) < 1)
+      ) {
+        return { status_code: 400, body: { error: "budget must be a positive integer" } };
+      }
+      const payload = {
+        sessionId: body.sessionId,
+        project: body.project,
+        budget: body.budget as number | undefined,
+      };
+      const result = await sdk.trigger({ function_id: "mem::context", payload });
       return { status_code: 200, body: result };
     },
   );
@@ -197,13 +249,25 @@ export function registerApiTriggers(
     },
   });
 
-  sdk.registerFunction("api::session::start", 
+  sdk.registerFunction("api::session::start",
     async (
       req: ApiRequest<{ sessionId: string; project: string; cwd: string }>,
     ): Promise<Response> => {
       const authErr = checkAuth(req, secret);
       if (authErr) return authErr;
-      const { sessionId, project, cwd } = req.body;
+      const body = (req.body ?? {}) as Record<string, unknown>;
+      if (typeof body.sessionId !== "string" || !body.sessionId.trim()) {
+        return { status_code: 400, body: { error: "sessionId is required and must be a string" } };
+      }
+      if (typeof body.project !== "string" || !body.project.trim()) {
+        return { status_code: 400, body: { error: "project is required and must be a string" } };
+      }
+      if (typeof body.cwd !== "string" || !body.cwd.trim()) {
+        return { status_code: 400, body: { error: "cwd is required and must be a string" } };
+      }
+      const sessionId = body.sessionId;
+      const project = body.project;
+      const cwd = body.cwd;
       const session: Session = {
         id: sessionId,
         project,
@@ -233,11 +297,15 @@ export function registerApiTriggers(
     },
   });
 
-  sdk.registerFunction("api::session::end", 
+  sdk.registerFunction("api::session::end",
     async (req: ApiRequest<{ sessionId: string }>): Promise<Response> => {
       const authErr = checkAuth(req, secret);
       if (authErr) return authErr;
-      await kv.update(KV.sessions, req.body.sessionId, [
+      const body = (req.body ?? {}) as Record<string, unknown>;
+      if (typeof body.sessionId !== "string" || !body.sessionId.trim()) {
+        return { status_code: 400, body: { error: "sessionId is required and must be a string" } };
+      }
+      await kv.update(KV.sessions, body.sessionId, [
         { type: "set", path: "endedAt", value: new Date().toISOString() },
         { type: "set", path: "status", value: "completed" },
       ]);
@@ -1749,7 +1817,7 @@ export function registerApiTriggers(
     const denied = checkAuth(req, secret);
     if (denied) return denied;
     const params = req.query_params || {};
-    const result = await sdk.trigger({ function_id: "mem::crystal-list", payload: { project: params.project, sessionId: params.sessionId, limit: params.limit ? parseInt(params.limit as string) : undefined } });
+    const result = await sdk.trigger({ function_id: "mem::crystal-list", payload: { project: params.project, sessionId: params.sessionId, limit: parseOptionalInt(params.limit) } });
     return { status_code: 200, body: result };
   });
   sdk.registerTrigger({ type: "http", function_id: "api::crystal-list", config: { api_path: "/agentmemory/crystals", http_method: "GET" } });
@@ -1880,8 +1948,8 @@ export function registerApiTriggers(
     const result = await sdk.trigger({ function_id: "mem::lesson-list", payload: {
       project: params.project,
       source: params.source,
-      minConfidence: params.minConfidence ? parseFloat(params.minConfidence as string) : undefined,
-      limit: params.limit ? parseInt(params.limit as string, 10) : undefined,
+      minConfidence: parseOptionalFloat(params.minConfidence),
+      limit: parseOptionalInt(params.limit),
     } });
     return { status_code: 200, body: result };
   });
@@ -1935,8 +2003,8 @@ export function registerApiTriggers(
     const params = req.query_params || {};
     const result = await sdk.trigger({ function_id: "mem::insight-list", payload: {
       project: params.project,
-      minConfidence: params.minConfidence ? parseFloat(params.minConfidence as string) : undefined,
-      limit: params.limit ? parseInt(params.limit as string, 10) : undefined,
+      minConfidence: parseOptionalFloat(params.minConfidence),
+      limit: parseOptionalInt(params.limit),
     } });
     return { status_code: 200, body: result };
   });

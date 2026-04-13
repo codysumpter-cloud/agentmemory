@@ -554,10 +554,8 @@ async function runUpgrade() {
   const dockerBin = whichBinary("docker");
 
   p.log.info(`Working directory: ${cwd}`);
-  let failed = false;
   const requireSuccess = (ok: boolean, label: string): boolean => {
     if (!ok) {
-      failed = true;
       p.log.error(`Upgrade aborted: ${label} failed.`);
     }
     return ok;
@@ -595,7 +593,11 @@ async function runUpgrade() {
       message: "Upgrade iii-engine via cargo install --force?",
       initialValue: true,
     });
-    if (upgradeEngine) {
+    if (p.isCancel(upgradeEngine)) {
+      p.cancel("Cancelled.");
+      return process.exit(0);
+    }
+    if (upgradeEngine === true) {
       const cargoOk = runCommand(cargoBin, ["install", "iii-engine", "--force"], {
         label: "Upgrading iii-engine (cargo)",
       });
@@ -616,10 +618,6 @@ async function runUpgrade() {
     });
   } else {
     p.log.info("Docker not found. Skipping Docker image refresh.");
-  }
-
-  if (failed) {
-    return process.exit(1);
   }
 
   p.note(

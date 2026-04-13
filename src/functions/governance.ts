@@ -98,18 +98,45 @@ export function registerGovernanceFunction(sdk: ISdk, kv: StateKV): void {
         };
       }
 
-      await Promise.all(candidates.map((mem) => kv.delete(KV.memories, mem.id)));
+      const results = await Promise.allSettled(
+        candidates.map((mem) => kv.delete(KV.memories, mem.id)),
+      );
+      const successfulIds: string[] = [];
+      const failures: Array<{ id: string; error: string }> = [];
+      results.forEach((result, i) => {
+        if (result.status === "fulfilled") {
+          successfulIds.push(candidates[i].id);
+        } else {
+          failures.push({
+            id: candidates[i].id,
+            error: result.reason instanceof Error ? result.reason.message : String(result.reason),
+          });
+        }
+      });
 
       await recordAudit(
         kv,
         "delete",
         "mem::governance-bulk",
-        candidates.map((m) => m.id),
-        { filter: data, deleted: candidates.length },
+        successfulIds,
+        {
+          filter: data,
+          deleted: successfulIds.length,
+          failed: failures.length,
+          failures: failures.length > 0 ? failures : undefined,
+        },
       );
 
-      ctx.logger.info("Governance bulk delete", { deleted: candidates.length });
-      return { success: true, deleted: candidates.length };
+      ctx.logger.info("Governance bulk delete", {
+        deleted: successfulIds.length,
+        failed: failures.length,
+      });
+      return {
+        success: true,
+        deleted: successfulIds.length,
+        failed: failures.length,
+        failures: failures.length > 0 ? failures : undefined,
+      };
     },
   );
 

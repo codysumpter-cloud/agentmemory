@@ -172,7 +172,7 @@ export function registerLeasesFunction(sdk: ISdk, kv: StateKV): void {
         activeLease.expiresAt = new Date(base + ttl).toISOString();
         activeLease.renewedAt = now.toISOString();
         await kv.set(KV.leases, activeLease.id, activeLease);
-        await recordAudit(kv, "lease_acquire", "mem::lease-renew", [activeLease.id], {
+        await recordAudit(kv, "lease_renew", "mem::lease-renew", [activeLease.id], {
           actionId: data.actionId,
           agentId: data.agentId,
           before: beforeLease,

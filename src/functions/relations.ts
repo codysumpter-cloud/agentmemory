@@ -45,9 +45,9 @@ export function registerRelationsFunction(sdk: ISdk, kv: StateKV): void {
     }) => {
       const ctx = getContext();
       const [firstId, secondId] = [data.sourceId, data.targetId].sort();
-      const pairKey = `mem:${firstId}:${secondId}`;
 
-      return withKeyedLock(pairKey, async () => {
+      return withKeyedLock(`mem:${firstId}`, async () =>
+        withKeyedLock(`mem:${secondId}`, async () => {
           const source = await kv.get<Memory>(KV.memories, data.sourceId);
           const target = await kv.get<Memory>(KV.memories, data.targetId);
           if (!source || !target) {
@@ -109,7 +109,8 @@ export function registerRelationsFunction(sdk: ISdk, kv: StateKV): void {
             target: data.targetId,
           });
           return { success: true, relationId, relation };
-        });
+        }),
+      );
     },
   );
 
