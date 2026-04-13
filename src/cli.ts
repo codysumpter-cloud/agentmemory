@@ -88,7 +88,12 @@ function findIiiConfig(): string {
 function whichBinary(name: string): string | null {
   const cmd = IS_WINDOWS ? "where" : "which";
   try {
-    return execFileSync(cmd, [name], { encoding: "utf-8" }).trim().split("\n")[0];
+    const out = execFileSync(cmd, [name], { encoding: "utf-8" });
+    const first = out
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .find((line) => line.length > 0);
+    return first ?? null;
   } catch {
     return null;
   }
