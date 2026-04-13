@@ -5,6 +5,7 @@ import { KV, generateId } from "../state/schema.js";
 import { StateKV } from "../state/kv.js";
 import { withKeyedLock } from "../state/keyed-mutex.js";
 import { recordAudit, safeAudit } from "./audit.js";
+import { recordAccessBatch } from "./access-tracker.js";
 
 function computeConfidence(
   source: Memory,
@@ -259,6 +260,11 @@ export function registerRelationsFunction(sdk: ISdk, kv: StateKV): void {
       }
 
       result.sort((a, b) => b.confidence - a.confidence);
+
+      void recordAccessBatch(
+        kv,
+        result.map((r) => r.memory.id),
+      );
 
       ctx.logger.info("Related memories retrieved", {
         memoryId: data.memoryId,

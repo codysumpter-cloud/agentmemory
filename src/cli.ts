@@ -1,14 +1,26 @@
 #!/usr/bin/env node
 
-import { spawn, execFileSync, spawnSync } from "node:child_process";
+import {
+  spawn,
+  execFileSync,
+  spawnSync,
+  type ChildProcess,
+} from "node:child_process";
 import { existsSync } from "node:fs";
-import { join, dirname } from "node:path";
+import { join, dirname, delimiter as PATH_DELIMITER } from "node:path";
 import { fileURLToPath } from "node:url";
+import { platform } from "node:os";
 import * as p from "@clack/prompts";
 import { generateId } from "./state/schema.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const args = process.argv.slice(2);
+const IS_WINDOWS = platform() === "win32";
+const IS_VERBOSE = args.includes("--verbose") || args.includes("-v");
+
+function vlog(msg: string): void {
+  if (IS_VERBOSE) p.log.info(`[verbose] ${msg}`);
+}
 
 if (args.includes("--help") || args.includes("-h")) {
   console.log(`
@@ -21,9 +33,11 @@ Commands:
   status             Show connection status, memory count, and health
   demo               Seed sample sessions and show recall in action
   upgrade            Upgrade local deps + iii runtime (best effort)
+  mcp                Start standalone MCP server (no engine required)
 
 Options:
   --help, -h         Show this help
+  --verbose, -v      Show engine stderr and diagnostic info on startup
   --tools all|core   Tool visibility (default: core = 7 tools)
   --no-engine        Skip auto-starting iii-engine
   --port <N>         Override REST port (default: 3111)
@@ -33,7 +47,9 @@ Quick start:
   npx @agentmemory/agentmemory status   # check health
   npx @agentmemory/agentmemory demo     # try it in 30 seconds (needs server running)
   npx @agentmemory/agentmemory upgrade  # upgrade agentmemory + iii runtime
-  npx agentmemory-mcp                   # standalone MCP server (no engine)
+  npx @agentmemory/agentmemory mcp      # standalone MCP server (no engine)
+  npx agentmemory-mcp                   # same as above (shim package)
+  npx @agentmemory/agentmemory upgrade  # upgrade agentmemory + iii runtime
 `);
   process.exit(0);
 }
@@ -78,55 +94,122 @@ function findIiiConfig(): string {
 }
 
 function whichBinary(name: string): string | null {
-  const cmd = process.platform === "win32" ? "where" : "which";
+  const cmd = IS_WINDOWS ? "where" : "which";
   try {
-    return execFileSync(cmd, [name], { encoding: "utf-8" }).trim().split("\n")[0];
+    const out = execFileSync(cmd, [name], { encoding: "utf-8" });
+    const first = out
+      .split(/\r?\n/)
+      .map((line) => line.trim())
+      .find((line) => line.length > 0);
+    return first ?? null;
   } catch {
     return null;
   }
 }
 
+function fallbackIiiPaths(): string[] {
+  if (IS_WINDOWS) {
+    const userProfile = process.env["USERPROFILE"] || "";
+    return [
+      join(userProfile, ".local", "bin", "iii.exe"),
+      join(userProfile, "bin", "iii.exe"),
+    ].filter(Boolean);
+  }
+  return [
+    join(process.env["HOME"] || "", ".local", "bin", "iii"),
+    "/usr/local/bin/iii",
+  ];
+}
+
+type StartupFailure = {
+  kind: "no-engine" | "no-docker-compose" | "engine-crashed" | "docker-crashed";
+  stderr?: string;
+  binary?: string;
+};
+
+let startupFailure: StartupFailure | null = null;
+
+// Spawn a background engine and collect any startup stderr for a short
+// window. The process is unref'd so the CLI parent can exit cleanly; we
+// only care about stderr that shows up BEFORE the health check succeeds,
+// which is what surfaces early crash/config-parse errors on all platforms.
+function spawnEngineBackground(
+  bin: string,
+  spawnArgs: string[],
+  label: string,
+): ChildProcess {
+  vlog(`spawn: ${bin} ${spawnArgs.join(" ")}`);
+  const child = spawn(bin, spawnArgs, {
+    detached: true,
+    stdio: ["ignore", "ignore", "pipe"],
+    windowsHide: true,
+  });
+  const stderrChunks: Buffer[] = [];
+  let stderrBytes = 0;
+  const MAX_STDERR_CAPTURE = 16 * 1024;
+  child.stderr?.on("data", (chunk: Buffer) => {
+    if (stderrBytes >= MAX_STDERR_CAPTURE) return;
+    const slice = chunk.subarray(0, MAX_STDERR_CAPTURE - stderrBytes);
+    stderrChunks.push(slice);
+    stderrBytes += slice.length;
+  });
+  child.on("exit", (code, signal) => {
+    if (code !== 0 && code !== null) {
+      const stderr = Buffer.concat(stderrChunks).toString("utf-8");
+      startupFailure = {
+        kind: label.includes("Docker") ? "docker-crashed" : "engine-crashed",
+        stderr: stderr.trim() || `process exited with code ${code}${signal ? ` (${signal})` : ""}`,
+        binary: bin,
+      };
+      vlog(`engine exited early: code=${code} signal=${signal}`);
+      if (IS_VERBOSE && stderr.trim()) {
+        p.log.error(`engine stderr:\n${stderr}`);
+      }
+    }
+  });
+  child.unref();
+  return child;
+}
+
 async function startEngine(): Promise<boolean> {
   const configPath = findIiiConfig();
   let iiiBin = whichBinary("iii");
+  vlog(`iii binary: ${iiiBin ?? "(not on PATH)"}, config: ${configPath || "(not found)"}`);
 
   if (iiiBin && configPath) {
     const s = p.spinner();
     s.start(`Starting iii-engine: ${iiiBin}`);
-    const child = spawn(iiiBin, ["--config", configPath], {
-      detached: true,
-      stdio: "ignore",
-    });
-    child.unref();
+    spawnEngineBackground(iiiBin, ["--config", configPath], "iii-engine");
     s.stop("iii-engine process started");
     return true;
   }
 
   const dockerBin = whichBinary("docker");
-  const dockerCompose = join(__dirname, "..", "docker-compose.yml");
-  const dcExists = existsSync(dockerCompose) || existsSync(join(process.cwd(), "docker-compose.yml"));
+  vlog(`docker binary: ${dockerBin ?? "(not on PATH)"}`);
+  const dockerComposeCandidates = [
+    join(__dirname, "..", "docker-compose.yml"),
+    join(__dirname, "docker-compose.yml"),
+    join(process.cwd(), "docker-compose.yml"),
+  ];
+  const composeFile = dockerComposeCandidates.find((c) => existsSync(c));
+  vlog(`docker-compose.yml: ${composeFile ?? "(not found)"}`);
 
-  if (dockerBin && dcExists) {
-    const composeFile = existsSync(dockerCompose) ? dockerCompose : join(process.cwd(), "docker-compose.yml");
+  if (dockerBin && composeFile) {
     const s = p.spinner();
     s.start("Starting iii-engine via Docker...");
-    const child = spawn(dockerBin, ["compose", "-f", composeFile, "up", "-d"], {
-      detached: true,
-      stdio: "ignore",
-    });
-    child.unref();
+    spawnEngineBackground(
+      dockerBin,
+      ["compose", "-f", composeFile, "up", "-d"],
+      "iii-engine via Docker",
+    );
     s.stop("Docker compose started");
     return true;
   }
 
-  const iiiPaths = [
-    join(process.env["HOME"] || "", ".local", "bin", "iii"),
-    "/usr/local/bin/iii",
-  ];
-  for (const iiiPath of iiiPaths) {
+  for (const iiiPath of fallbackIiiPaths()) {
     if (existsSync(iiiPath)) {
       p.log.info(`Found iii at: ${iiiPath}`);
-      process.env["PATH"] = `${dirname(iiiPath)}:${process.env["PATH"]}`;
+      process.env["PATH"] = `${dirname(iiiPath)}${PATH_DELIMITER}${process.env["PATH"] ?? ""}`;
       iiiBin = iiiPath;
       break;
     }
@@ -135,15 +218,16 @@ async function startEngine(): Promise<boolean> {
   if (iiiBin && configPath) {
     const s = p.spinner();
     s.start(`Starting iii-engine: ${iiiBin}`);
-    const child = spawn(iiiBin, ["--config", configPath], {
-      detached: true,
-      stdio: "ignore",
-    });
-    child.unref();
+    spawnEngineBackground(iiiBin, ["--config", configPath], "iii-engine");
     s.stop("iii-engine process started");
     return true;
   }
 
+  if (!iiiBin && (!dockerBin || !composeFile)) {
+    startupFailure = { kind: "no-engine" };
+  } else if (!composeFile && dockerBin) {
+    startupFailure = { kind: "no-docker-compose" };
+  }
   return false;
 }
 
@@ -154,6 +238,49 @@ async function waitForEngine(timeoutMs: number): Promise<boolean> {
     await new Promise((r) => setTimeout(r, 500));
   }
   return false;
+}
+
+function installInstructions(): string[] {
+  if (IS_WINDOWS) {
+    return [
+      "agentmemory requires the `iii-engine` runtime. Pick one:",
+      "",
+      "  A) Download the prebuilt Windows binary:",
+      "     1. Open https://github.com/iii-hq/iii/releases/latest",
+      "     2. Download iii-x86_64-pc-windows-msvc.zip",
+      "        (or iii-aarch64-pc-windows-msvc.zip on ARM)",
+      "     3. Extract iii.exe and either add its folder to PATH",
+      "        or move it to %USERPROFILE%\\.local\\bin\\iii.exe",
+      "     4. Re-run: npx @agentmemory/agentmemory",
+      "",
+      "  B) Docker Desktop:",
+      "     1. Install Docker Desktop for Windows",
+      "     2. Start Docker Desktop (engine must be running)",
+      "     3. Re-run: npx @agentmemory/agentmemory",
+      "",
+      "Or skip the engine entirely for standalone MCP:",
+      "  npx @agentmemory/agentmemory mcp",
+    ];
+  }
+  return [
+    "agentmemory requires the `iii-engine` runtime. Pick one:",
+    "",
+    "  A) curl -fsSL https://install.iii.dev/iii/main/install.sh | sh",
+    "     (installs the prebuilt iii binary into ~/.local/bin/iii)",
+    "",
+    "  B) Docker: install Docker Desktop or docker-ce, then re-run",
+    "",
+    "Or skip the engine entirely for standalone MCP:",
+    "  npx @agentmemory/agentmemory mcp",
+    "",
+    "Docs: https://iii.dev/docs",
+  ];
+}
+
+function portInUseDiagnostic(port: number): string {
+  return IS_WINDOWS
+    ? `  netstat -ano | findstr :${port}`
+    : `  lsof -i :${port}   # or: ss -tlnp | grep :${port}`;
 }
 
 async function main() {
@@ -174,21 +301,15 @@ async function main() {
   const started = await startEngine();
   if (!started) {
     p.log.error("Could not start iii-engine.");
-    p.note(
-      [
-        "Install iii-engine (pick one):",
-        "  cargo install iii-engine",
-        "  See: https://iii.dev/docs",
+    const lines = installInstructions();
+    if (startupFailure?.kind === "no-docker-compose") {
+      lines.unshift(
+        "Docker is installed but docker-compose.yml is missing from this",
+        "install. Re-install with: npm install -g @agentmemory/agentmemory",
         "",
-        "Or use Docker:",
-        "  docker pull iiidev/iii:latest",
-        "",
-        "Docs: https://iii.dev/docs",
-        "",
-        "Or skip with: agentmemory --no-engine",
-      ].join("\n"),
-      "Setup required",
-    );
+      );
+    }
+    p.note(lines.join("\n"), "Setup required");
     process.exit(1);
   }
 
@@ -199,7 +320,44 @@ async function main() {
   if (!ready) {
     const port = getRestPort();
     s.stop("iii-engine did not become ready within 15s");
-    p.log.error(`Check that ports ${port}, ${port + 1}, 49134 are available.`);
+
+    if (startupFailure?.kind === "engine-crashed" || startupFailure?.kind === "docker-crashed") {
+      p.log.error("The iii-engine process crashed on startup.");
+      if (startupFailure.binary) {
+        p.log.info(`Binary: ${startupFailure.binary}`);
+      }
+      if (startupFailure.stderr) {
+        p.note(startupFailure.stderr, "engine stderr");
+      } else {
+        p.log.info("No stderr was captured. Re-run with --verbose for more detail.");
+      }
+      p.note(
+        [
+          "Common causes:",
+          "  - iii-engine version mismatch — reinstall the latest binary",
+          "    (sh script on macOS/Linux, GitHub release zip on Windows)",
+          "  - Docker Desktop not running (if you're using the Docker path)",
+          "  - Port already in use (see below)",
+          "",
+          "See https://iii.dev/docs for current install instructions.",
+        ].join("\n"),
+        "Troubleshooting",
+      );
+    } else {
+      p.log.error("The engine process started but the REST API never responded.");
+      p.note(
+        [
+          `Check whether port ${port} is already bound by another process:`,
+          portInUseDiagnostic(port),
+          "",
+          "If it is, free the port or override: agentmemory --port <N>",
+          "",
+          "If it isn't, a firewall may be blocking 127.0.0.1:" + port + ".",
+          "Re-run with --verbose to see engine stderr.",
+        ].join("\n"),
+        "Troubleshooting",
+      );
+    }
     process.exit(1);
   }
 
@@ -633,10 +791,15 @@ async function runUpgrade() {
   );
 }
 
+async function runMcp(): Promise<void> {
+  await import("./mcp/standalone.js");
+}
+
 const commands: Record<string, () => Promise<void>> = {
   status: runStatus,
   demo: runDemo,
   upgrade: runUpgrade,
+  mcp: runMcp,
 };
 
 const handler = commands[args[0] ?? ""] ?? main;

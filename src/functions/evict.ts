@@ -9,6 +9,7 @@ import type {
 import { KV } from "../state/schema.js";
 import { StateKV } from "../state/kv.js";
 import { recordAudit } from "./audit.js";
+import { deleteAccessLog } from "./access-tracker.js";
 
 interface EvictionConfig {
   staleSessionDays: number;
@@ -156,6 +157,7 @@ export function registerEvictFunction(sdk: ISdk, kv: StateKV): void {
                 reason: "expired_memory",
                 dryRun,
               });
+              await deleteAccessLog(kv, mem.id);
             }
           }
         }
@@ -175,6 +177,7 @@ export function registerEvictFunction(sdk: ISdk, kv: StateKV): void {
                 reason: "old_non_latest_memory",
                 dryRun,
               });
+              await deleteAccessLog(kv, mem.id);
             }
           }
         }
