@@ -108,16 +108,16 @@ function whichBinary(name: string): string | null {
 
 function fallbackIiiPaths(): string[] {
   if (IS_WINDOWS) {
-    const userProfile = process.env["USERPROFILE"] || "";
+    const userProfile = process.env["USERPROFILE"];
+    if (!userProfile) return [];
     return [
       join(userProfile, ".local", "bin", "iii.exe"),
       join(userProfile, "bin", "iii.exe"),
-    ].filter(Boolean);
+    ];
   }
-  return [
-    join(process.env["HOME"] || "", ".local", "bin", "iii"),
-    "/usr/local/bin/iii",
-  ];
+  const home = process.env["HOME"];
+  if (!home) return ["/usr/local/bin/iii"];
+  return [join(home, ".local", "bin", "iii"), "/usr/local/bin/iii"];
 }
 
 type StartupFailure = {
@@ -153,11 +153,17 @@ function spawnEngineBackground(
     stderrBytes += slice.length;
   });
   child.on("exit", (code, signal) => {
-    if (code !== 0 && code !== null) {
+    const abnormal =
+      (code !== null && code !== 0) || (code === null && signal !== null);
+    if (abnormal) {
       const stderr = Buffer.concat(stderrChunks).toString("utf-8");
       startupFailure = {
         kind: label.includes("Docker") ? "docker-crashed" : "engine-crashed",
-        stderr: stderr.trim() || `process exited with code ${code}${signal ? ` (${signal})` : ""}`,
+        stderr:
+          stderr.trim() ||
+          (signal
+            ? `process killed by signal ${signal}`
+            : `process exited with code ${code}`),
         binary: bin,
       };
       vlog(`engine exited early: code=${code} signal=${signal}`);
