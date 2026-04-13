@@ -5,6 +5,7 @@ import { createStdioTransport } from "./transport.js";
 import { getVisibleTools } from "./tools-registry.js";
 import { getStandalonePersistPath } from "../config.js";
 import { VERSION } from "../version.js";
+import { generateId } from "../state/schema.js";
 
 const IMPLEMENTED_TOOLS = new Set([
   "memory_save",
@@ -22,16 +23,18 @@ const SERVER_INFO = {
 
 const kv = new InMemoryKV(getStandalonePersistPath());
 
-async function handleToolCall(
+export async function handleToolCall(
   toolName: string,
   args: Record<string, unknown>,
+  kvInstance: InMemoryKV = kv,
 ): Promise<{ content: Array<{ type: string; text: string }> }> {
   switch (toolName) {
     case "memory_save": {
       const content = args.content as string;
       if (!content?.trim()) throw new Error("content is required");
-      const id = `mem_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
-      await kv.set("mem:memories", id, {
+      const id = generateId("mem");
+      const isoNow = new Date().toISOString();
+      await kvInstance.set("mem:memories", id, {
         id,
         type: (args.type as string) || "fact",
         title: content.slice(0, 80),
@@ -42,13 +45,14 @@ async function handleToolCall(
         files: args.files
           ? (args.files as string).split(",").map((f) => f.trim())
           : [],
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
+        createdAt: isoNow,
+        updatedAt: isoNow,
         strength: 7,
         version: 1,
         isLatest: true,
         sessionIds: [],
       });
+      kvInstance.persist();
       return {
         content: [{ type: "text", text: JSON.stringify({ saved: id }) }],
       };
@@ -57,7 +61,7 @@ async function handleToolCall(
     case "memory_recall": {
       const query = (args.query as string)?.toLowerCase() || "";
       const limit = (args.limit as number) || 10;
-      const all = await kv.list<Record<string, unknown>>("mem:memories");
+      const all = await kvInstance.list<Record<string, unknown>>("mem:memories");
       const results = all
         .filter((m) => {
           const text = `${m.title} ${m.content}`.toLowerCase();
@@ -70,7 +74,7 @@ async function handleToolCall(
     }
 
     case "memory_sessions": {
-      const sessions = await kv.list("mem:sessions");
+      const sessions = await kvInstance.list("mem:sessions");
       return {
         content: [
           { type: "text", text: JSON.stringify({ sessions }, null, 2) },
@@ -79,8 +83,8 @@ async function handleToolCall(
     }
 
     case "memory_export": {
-      const memories = await kv.list("mem:memories");
-      const sessions = await kv.list("mem:sessions");
+      const memories = await kvInstance.list("mem:memories");
+      const sessions = await kvInstance.list("mem:sessions");
       return {
         content: [
           {
@@ -96,7 +100,7 @@ async function handleToolCall(
     }
 
     case "memory_audit": {
-      const entries = await kv.list("mem:audit");
+      const entries = await kvInstance.list("mem:audit");
       const limit = (args.limit as number) || 50;
       return {
         content: [
