@@ -4,6 +4,37 @@ All notable changes to agentmemory will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [0.8.6] — 2026-04-13
+
+Finishes the `npx <shim>` story from #120 by moving the standalone package under the `@agentmemory` scope.
+
+### Changed
+
+- **Standalone MCP shim is now `@agentmemory/mcp`** — the 0.8.5 publish attempted to push `agentmemory-mcp` as an unscoped package, but npm's name-similarity policy rejects it because of an unrelated third-party package called `agent-memory-mcp`. The shim now lives under the scope we already own, so `npx -y @agentmemory/mcp` works on the live registry. All README/integration/CLI-help snippets, the OpenClaw and Hermes guides, and the Claude-Desktop/Cursor/Codex/OpenCode MCP config examples have been updated to use the scoped name. The unscoped `agentmemory-mcp` command line (in the main package's `bin` field) was never published and has been removed from the docs.
+- **Package directory renamed** `packages/agentmemory-mcp/` → `packages/mcp/`. The `.github/workflows/publish.yml` publish step points at the new path and `npm view @agentmemory/mcp` for the propagation check.
+- **Log prefix** in `src/mcp/standalone.ts` and `src/mcp/in-memory-kv.ts` changed from `[agentmemory-mcp]` to `[@agentmemory/mcp]` so stderr output matches the package users install.
+
+### Fixed
+
+- **Shim version bump was missed in 0.8.5** — `packages/agentmemory-mcp/package.json` (now `packages/mcp/package.json`) was still pinned at `0.8.4` because the release bump script only touched the 8 files in the main package. The shim now tracks the main package and depends on `@agentmemory/agentmemory: ~0.8.6`.
+
+[0.8.6]: https://github.com/rohitg00/agentmemory/compare/v0.8.5...v0.8.6
+
+## [0.8.5] — 2026-04-13
+
+Compatibility fix for stricter JSON-RPC clients, plus a spec cleanup CodeRabbit caught during review.
+
+### Fixed
+
+- **MCP server works with Codex CLI and any strict JSON-RPC 2.0 client** ([#129](https://github.com/rohitg00/agentmemory/issues/129)) — the stdio transport was responding to JSON-RPC **notifications** (messages without an `id` field, e.g. `notifications/initialized`), which violates JSON-RPC 2.0 §4.1 and caused stricter clients like Codex CLI v0.120.0 to close the transport with "Transport closed". Notifications are now detected by the missing/null `id` field, the handler still runs for side effects, but no response is written. Handler errors on notifications are logged to stderr instead of sent back to the client. Claude Code and other clients that tolerated the spurious responses continue to work unchanged.
+- **Request `id` type validation per JSON-RPC 2.0 §4** — the transport previously only checked `id != null`, so a malformed request with `id: {}` or `id: [1,2]` could get echoed back with that non-primitive id, and valid-shape requests with bad id types fell through to the handler and produced a response carrying a bogus non-JSON-RPC id. `isValidId()` now enforces `string | number | null | undefined`, and bad-id requests get `-32600 Invalid Request` with `id: null` before the handler runs. Caught by CodeRabbit on PR [#131](https://github.com/rohitg00/agentmemory/pull/131).
+
+### Infrastructure
+
+- 14 tests in `test/mcp-transport.test.ts` covering the request path, notification path (#129), malformed input, and id-type validation (object/array/boolean). Full suite: 698 passing.
+
+[0.8.5]: https://github.com/rohitg00/agentmemory/compare/v0.8.4...v0.8.5
+
 ## [0.8.4] — 2026-04-13
 
 Two community contributions land on top of 0.8.3 and close out the #120 npm story for real.
