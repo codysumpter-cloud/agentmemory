@@ -73,10 +73,17 @@ export function registerRetentionFunctions(
   sdk: ISdk,
   kv: StateKV,
 ): void {
-  sdk.registerFunction("mem::retention-score", 
+  sdk.registerFunction("mem::retention-score",
     async (data: { config?: Partial<DecayConfig> }) => {
       const ctx = getContext();
-      const config = { ...DEFAULT_DECAY, ...data.config };
+      const config: DecayConfig = {
+        ...DEFAULT_DECAY,
+        ...data.config,
+        tierThresholds: {
+          ...DEFAULT_DECAY.tierThresholds,
+          ...(data.config?.tierThresholds ?? {}),
+        },
+      };
 
       const memories = await kv.list<Memory>(KV.memories);
       const semanticMems = await kv.list<SemanticMemory>(KV.semantic);
@@ -209,7 +216,21 @@ export function registerRetentionFunctions(
       let failed = 0;
       for (const candidate of candidates) {
         try {
-          await kv.delete(candidate.sourceBucket || KV.memories, candidate.memoryId);
+          if (candidate.sourceBucket) {
+            await kv.delete(candidate.sourceBucket, candidate.memoryId);
+          } else {
+            // Legacy retention score without sourceBucket — we don't
+            // know which bucket this memory lives in, so try both and
+            // swallow individual errors. Whichever bucket contains the
+            // id will succeed; the other is a no-op. Next scoring run
+            // writes sourceBucket so this branch retires naturally.
+            await kv
+              .delete(KV.memories, candidate.memoryId)
+              .catch(() => {});
+            await kv
+              .delete(KV.semantic, candidate.memoryId)
+              .catch(() => {});
+          }
           await kv.delete(KV.retentionScores, candidate.memoryId);
           evicted++;
         } catch (err) {

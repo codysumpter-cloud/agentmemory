@@ -4,7 +4,7 @@ import type { Memory, MemoryRelation } from "../types.js";
 import { KV, generateId } from "../state/schema.js";
 import { StateKV } from "../state/kv.js";
 import { withKeyedLock } from "../state/keyed-mutex.js";
-import { recordAudit } from "./audit.js";
+import { recordAudit, safeAudit } from "./audit.js";
 
 function computeConfidence(
   source: Memory,
@@ -71,36 +71,43 @@ export function registerRelationsFunction(sdk: ISdk, kv: StateKV): void {
           };
 
           const relationId = generateId("rel");
+          let sourceUpdated = false;
+          let targetUpdated = false;
+
+          // Complete every durable write first, then emit audits. An
+          // audit failure must not leave the three kv.set calls in a
+          // partial state.
           await kv.set(KV.relations, relationId, relation);
-          await recordAudit(kv, "evolve", "mem::relate", [relationId], {
-            operation: "relate",
-            type: data.type,
-            sourceId: data.sourceId,
-            targetId: data.targetId,
-            confidence,
-          });
 
           if (!source.relatedIds) source.relatedIds = [];
           if (!source.relatedIds.includes(data.targetId)) {
             source.relatedIds.push(data.targetId);
             await kv.set(KV.memories, data.sourceId, source);
-            await recordAudit(kv, "evolve", "mem::relate", [data.sourceId], {
-              operation: "relate",
-              relationId,
-              updatedRelatedId: data.targetId,
-            });
+            sourceUpdated = true;
           }
 
           if (!target.relatedIds) target.relatedIds = [];
           if (!target.relatedIds.includes(data.sourceId)) {
             target.relatedIds.push(data.sourceId);
             await kv.set(KV.memories, data.targetId, target);
-            await recordAudit(kv, "evolve", "mem::relate", [data.targetId], {
-              operation: "relate",
-              relationId,
-              updatedRelatedId: data.sourceId,
-            });
+            targetUpdated = true;
           }
+
+          // Best-effort audit; safeAudit swallows failures and logs.
+          await safeAudit(
+            kv,
+            "relation_create",
+            "mem::relate",
+            [relationId, data.sourceId, data.targetId],
+            {
+              type: data.type,
+              sourceId: data.sourceId,
+              targetId: data.targetId,
+              confidence,
+              sourceRelatedIdsUpdated: sourceUpdated,
+              targetRelatedIdsUpdated: targetUpdated,
+            },
+          );
 
           ctx.logger.info("Memory relation created", {
             relationId,

@@ -1975,12 +1975,20 @@ export function registerApiTriggers(
   });
   sdk.registerTrigger({ type: "http", function_id: "api::lesson-strengthen", config: { api_path: "/agentmemory/lessons/strengthen", http_method: "POST" } });
 
-  sdk.registerFunction("api::obsidian-export",  async (req: ApiRequest) => {
+  sdk.registerFunction("api::obsidian-export", async (req: ApiRequest) => {
     const denied = checkAuth(req, secret);
     if (denied) return denied;
     const body = (req.body as Record<string, unknown>) || {};
-    const types = typeof body.types === "string" ? body.types.split(",").map((t: string) => t.trim()).filter(Boolean) : undefined;
-    const result = await sdk.trigger({ function_id: "mem::obsidian-export", payload: { vaultDir: body.vaultDir, types } });
+    if (body.vaultDir !== undefined && typeof body.vaultDir !== "string") {
+      return { status_code: 400, body: { error: "vaultDir must be a string" } };
+    }
+    const types = typeof body.types === "string"
+      ? body.types.split(",").map((t: string) => t.trim()).filter(Boolean)
+      : undefined;
+    const result = await sdk.trigger({
+      function_id: "mem::obsidian-export",
+      payload: { vaultDir: body.vaultDir as string | undefined, types },
+    });
     return { status_code: 200, body: result };
   });
   sdk.registerTrigger({ type: "http", function_id: "api::obsidian-export", config: { api_path: "/agentmemory/obsidian/export", http_method: "POST" } });

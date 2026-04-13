@@ -3,7 +3,7 @@ import { getContext } from "iii-sdk";
 import type { Memory, GovernanceFilter, AuditEntry } from "../types.js";
 import { KV } from "../state/schema.js";
 import type { StateKV } from "../state/kv.js";
-import { recordAudit, queryAudit } from "./audit.js";
+import { recordAudit, safeAudit, queryAudit } from "./audit.js";
 
 export function registerGovernanceFunction(sdk: ISdk, kv: StateKV): void {
   sdk.registerFunction("mem::governance-delete", 
@@ -98,23 +98,31 @@ export function registerGovernanceFunction(sdk: ISdk, kv: StateKV): void {
         };
       }
 
-      const results = await Promise.allSettled(
-        candidates.map((mem) => kv.delete(KV.memories, mem.id)),
-      );
+      const BATCH_SIZE = 50;
       const successfulIds: string[] = [];
       const failures: Array<{ id: string; error: string }> = [];
-      results.forEach((result, i) => {
-        if (result.status === "fulfilled") {
-          successfulIds.push(candidates[i].id);
-        } else {
-          failures.push({
-            id: candidates[i].id,
-            error: result.reason instanceof Error ? result.reason.message : String(result.reason),
-          });
-        }
-      });
+      for (let i = 0; i < candidates.length; i += BATCH_SIZE) {
+        const batch = candidates.slice(i, i + BATCH_SIZE);
+        const results = await Promise.allSettled(
+          batch.map((mem) => kv.delete(KV.memories, mem.id)),
+        );
+        results.forEach((result, j) => {
+          const mem = batch[j];
+          if (result.status === "fulfilled") {
+            successfulIds.push(mem.id);
+          } else {
+            failures.push({
+              id: mem.id,
+              error:
+                result.reason instanceof Error
+                  ? result.reason.message
+                  : String(result.reason),
+            });
+          }
+        });
+      }
 
-      await recordAudit(
+      await safeAudit(
         kv,
         "delete",
         "mem::governance-bulk",

@@ -477,7 +477,8 @@ export interface AuditEntry {
     | "skill_extract"
     | "core_add"
     | "core_remove"
-    | "auto_page";
+    | "auto_page"
+    | "relation_create";
   userId?: string;
   functionId: string;
   targetIds: string[];
