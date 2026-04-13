@@ -3,6 +3,7 @@ import type { StateKV } from "../state/kv.js";
 import { KV, generateId } from "../state/schema.js";
 import { withKeyedLock } from "../state/keyed-mutex.js";
 import type { Action, ActionEdge, Sketch } from "../types.js";
+import { recordAudit } from "./audit.js";
 
 export function registerSketchesFunction(sdk: ISdk, kv: StateKV): void {
   sdk.registerFunction("mem::sketch-create", 
@@ -30,6 +31,10 @@ export function registerSketchesFunction(sdk: ISdk, kv: StateKV): void {
       };
 
       await kv.set(KV.sketches, sketch.id, sketch);
+      await recordAudit(kv, "sketch_create", "mem::sketch-create", [sketch.id], {
+        action: "create",
+        title: sketch.title,
+      });
       return { success: true, sketch };
     },
   );
@@ -88,6 +93,10 @@ export function registerSketchesFunction(sdk: ISdk, kv: StateKV): void {
         }
 
         await kv.set(KV.actions, action.id, action);
+        await recordAudit(kv, "sketch_create", "mem::sketch-add", [action.id], {
+          action: "add.action",
+          sketchId: sketch.id,
+        });
 
         const createdEdges: ActionEdge[] = [];
         if (data.dependsOn && data.dependsOn.length > 0) {
@@ -100,12 +109,20 @@ export function registerSketchesFunction(sdk: ISdk, kv: StateKV): void {
               createdAt: now,
             };
             await kv.set(KV.actionEdges, edge.id, edge);
+            await recordAudit(kv, "sketch_create", "mem::sketch-add", [edge.id], {
+              action: "add.edge",
+              sketchId: sketch.id,
+            });
             createdEdges.push(edge);
           }
         }
 
         sketch.actionIds.push(action.id);
         await kv.set(KV.sketches, sketch.id, sketch);
+        await recordAudit(kv, "sketch_create", "mem::sketch-add", [sketch.id], {
+          action: "add.sketch-update",
+          addedActionId: action.id,
+        });
 
         return { success: true, action, edges: createdEdges };
       });
@@ -137,6 +154,10 @@ export function registerSketchesFunction(sdk: ISdk, kv: StateKV): void {
             }
             action.updatedAt = new Date().toISOString();
             await kv.set(KV.actions, action.id, action);
+            await recordAudit(kv, "sketch_promote", "mem::sketch-promote", [action.id], {
+              action: "promote.action",
+              sketchId: sketch.id,
+            });
             promotedIds.push(action.id);
           }
         }
@@ -144,6 +165,10 @@ export function registerSketchesFunction(sdk: ISdk, kv: StateKV): void {
         sketch.status = "promoted";
         sketch.promotedAt = new Date().toISOString();
         await kv.set(KV.sketches, sketch.id, sketch);
+        await recordAudit(kv, "sketch_promote", "mem::sketch-promote", [sketch.id], {
+          action: "promote.sketch",
+          promotedIds,
+        });
 
         return { success: true, promotedIds };
       });
@@ -174,16 +199,27 @@ export function registerSketchesFunction(sdk: ISdk, kv: StateKV): void {
             actionIdSet.has(edge.targetActionId)
           ) {
             await kv.delete(KV.actionEdges, edge.id);
+            await recordAudit(kv, "sketch_discard", "mem::sketch-discard", [edge.id], {
+              action: "discard.edge",
+              sketchId: sketch.id,
+            });
           }
         }
 
         for (const actionId of sketch.actionIds) {
           await kv.delete(KV.actions, actionId);
+          await recordAudit(kv, "sketch_discard", "mem::sketch-discard", [actionId], {
+            action: "discard.action",
+            sketchId: sketch.id,
+          });
         }
 
         sketch.status = "discarded";
         sketch.discardedAt = new Date().toISOString();
         await kv.set(KV.sketches, sketch.id, sketch);
+        await recordAudit(kv, "sketch_discard", "mem::sketch-discard", [sketch.id], {
+          action: "discard.sketch",
+        });
 
         return { success: true, discardedCount: sketch.actionIds.length };
       });
@@ -248,16 +284,27 @@ export function registerSketchesFunction(sdk: ISdk, kv: StateKV): void {
               actionIdSet.has(edge.targetActionId)
             ) {
               await kv.delete(KV.actionEdges, edge.id);
+              await recordAudit(kv, "sketch_discard", "mem::sketch-gc", [edge.id], {
+                action: "gc.edge",
+                sketchId: current.id,
+              });
             }
           }
 
           for (const actionId of current.actionIds) {
             await kv.delete(KV.actions, actionId);
+            await recordAudit(kv, "sketch_discard", "mem::sketch-gc", [actionId], {
+              action: "gc.action",
+              sketchId: current.id,
+            });
           }
 
           current.status = "discarded";
           current.discardedAt = new Date().toISOString();
           await kv.set(KV.sketches, current.id, current);
+          await recordAudit(kv, "sketch_discard", "mem::sketch-gc", [current.id], {
+            action: "gc.sketch",
+          });
           collected++;
         });
       }

@@ -2,6 +2,7 @@ import type { ISdk } from "iii-sdk";
 import type { StateKV } from "../state/kv.js";
 import { KV, generateId } from "../state/schema.js";
 import type { Signal } from "../types.js";
+import { recordAudit } from "./audit.js";
 
 export function registerSignalsFunction(sdk: ISdk, kv: StateKV): void {
   sdk.registerFunction("mem::signal-send", 
@@ -45,6 +46,12 @@ export function registerSignalsFunction(sdk: ISdk, kv: StateKV): void {
       };
 
       await kv.set(KV.signals, signal.id, signal);
+      await recordAudit(kv, "signal_send", "mem::signal-send", [signal.id], {
+        action: "create",
+        from: data.from,
+        to: data.to,
+        type: signal.type,
+      });
 
       return { success: true, signal };
     },
@@ -93,7 +100,14 @@ export function registerSignalsFunction(sdk: ISdk, kv: StateKV): void {
 
       for (const sig of results) {
         if (!sig.readAt && sig.to === data.agentId) {
+          const beforeReadAt = sig.readAt;
           sig.readAt = new Date().toISOString();
+          await recordAudit(kv, "signal_send", "mem::signal-read", [sig.id], {
+            action: "signal.mark_read",
+            actor: data.agentId,
+            beforeReadAt,
+            afterReadAt: sig.readAt,
+          });
           await kv.set(KV.signals, sig.id, sig);
         }
       }
@@ -171,6 +185,11 @@ export function registerSignalsFunction(sdk: ISdk, kv: StateKV): void {
 
       for (const sig of signals) {
         if (sig.expiresAt && new Date(sig.expiresAt).getTime() <= now) {
+          await recordAudit(kv, "delete", "mem::signal-cleanup", [sig.id], {
+            action: "delete",
+            resource: "Signal",
+            before: sig,
+          });
           await kv.delete(KV.signals, sig.id);
           removed++;
         }

@@ -2,6 +2,7 @@ import type { ISdk } from "iii-sdk";
 import type { StateKV } from "../state/kv.js";
 import { KV, generateId } from "../state/schema.js";
 import { withKeyedLock } from "../state/keyed-mutex.js";
+import { recordAudit } from "./audit.js";
 import type {
   MeshPeer,
   Memory,
@@ -171,6 +172,13 @@ export function registerMeshFunction(
       };
 
       await kv.set(KV.mesh, peer.id, peer);
+      await recordAudit(kv, "mesh_sync", "mem::mesh-register", [peer.id], {
+        action: "mesh.register",
+        peerId: peer.id,
+        name: peer.name,
+        url: peer.url,
+        sharedScopes: peer.sharedScopes,
+      });
       return { success: true, peer };
     },
   );
@@ -221,6 +229,11 @@ export function registerMeshFunction(
 
         peer.status = "syncing";
         await kv.set(KV.mesh, peer.id, peer);
+        await recordAudit(kv, "mesh_sync", "mem::mesh-sync", [peer.id], {
+          action: "mesh.sync.start",
+          direction,
+          scopes: data.scopes || peer.sharedScopes,
+        });
 
         const scopes = data.scopes || peer.sharedScopes;
 
@@ -229,6 +242,10 @@ export function registerMeshFunction(
             result.errors.push("peer URL blocked: private/local address not allowed");
             peer.status = "error";
             await kv.set(KV.mesh, peer.id, peer);
+            await recordAudit(kv, "mesh_sync", "mem::mesh-sync", [peer.id], {
+              action: "mesh.sync.error",
+              error: "peer URL blocked: private/local address not allowed",
+            });
             results.push(result);
             continue;
           }
@@ -293,6 +310,15 @@ export function registerMeshFunction(
         }
 
         await kv.set(KV.mesh, peer.id, peer);
+        await recordAudit(kv, "mesh_sync", "mem::mesh-sync", [peer.id], {
+          action: result.errors.length > 0 ? "mesh.sync.error" : "mesh.sync.complete",
+          direction,
+          scopes,
+          pushed: result.pushed,
+          pulled: result.pulled,
+          errors: result.errors,
+          lastSyncAt: peer.lastSyncAt,
+        });
         results.push(result);
       }
 
@@ -316,6 +342,10 @@ export function registerMeshFunction(
             const existing = await kv.get<MemoryRelation>(KV.relations, relKey);
             if (!existing) {
               await kv.set(KV.relations, relKey, rel);
+              await recordAudit(kv, "mesh_sync", "mem::mesh-receive", [relKey], {
+                action: "mesh.receive.relation",
+                accepted: true,
+              });
               accepted++;
             }
           });
@@ -323,6 +353,10 @@ export function registerMeshFunction(
       }
       accepted += await lwwMergeGraphNodes(kv, data.graphNodes);
       accepted += await lwwMergeList(kv, KV.graphEdges, data.graphEdges, "mem:gedge", "createdAt");
+      await recordAudit(kv, "mesh_sync", "mem::mesh-receive", [], {
+        action: "mesh.receive",
+        accepted,
+      });
 
       return { success: true, accepted };
     },
@@ -334,6 +368,9 @@ export function registerMeshFunction(
         return { success: false, error: "peerId is required" };
       }
       await kv.delete(KV.mesh, data.peerId);
+      await recordAudit(kv, "mesh_sync", "mem::mesh-remove", [data.peerId], {
+        action: "mesh.remove",
+      });
       return { success: true };
     },
   );

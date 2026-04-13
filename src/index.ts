@@ -83,6 +83,17 @@ import { registerHealthMonitor } from "./health/monitor.js";
 import { initMetrics, OTEL_CONFIG } from "./telemetry/setup.js";
 import { VERSION } from "./version.js";
 
+function hasGetMeter(
+  sdk: unknown,
+): sdk is { getMeter: (name: string) => unknown } {
+  return (
+    typeof sdk === "object" &&
+    sdk !== null &&
+    "getMeter" in sdk &&
+    typeof (sdk as { getMeter?: unknown }).getMeter === "function"
+  );
+}
+
 async function main() {
   const config = loadConfig();
   const embeddingConfig = loadEmbeddingConfig();
@@ -128,16 +139,9 @@ async function main() {
 
   const vectorIndex = embeddingProvider ? new VectorIndex() : null;
 
-  const meterAccessor =
-    "getMeter" in sdk &&
-    typeof (sdk as unknown as { getMeter?: (name: string) => unknown }).getMeter ===
-      "function"
-      ? (
-          sdk as unknown as {
-            getMeter: (name: string) => unknown;
-          }
-        ).getMeter.bind(sdk) as (name: string) => unknown
-      : undefined;
+  const meterAccessor = hasGetMeter(sdk)
+    ? (sdk.getMeter.bind(sdk) as (name: string) => unknown)
+    : undefined;
 
   initMetrics(meterAccessor as ((name: string) => import("@opentelemetry/api").Meter) | undefined);
 

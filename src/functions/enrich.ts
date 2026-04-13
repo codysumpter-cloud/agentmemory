@@ -27,13 +27,13 @@ export function registerEnrichFunction(sdk: ISdk, kv: StateKV): void {
       const parts: string[] = [];
 
       const fileContextPromise = sdk
-        .trigger<{ sessionId: string; files: string[] }, { context: string }>(
-          "mem::file-context",
-          {
+        .trigger<{ sessionId: string; files: string[] }, { context: string }>({
+          function_id: "mem::file-context",
+          payload: {
             sessionId: data.sessionId,
             files: data.files,
           },
-        )
+        })
         .catch(() => ({ context: "" }));
 
       const searchQueries: string[] = [
@@ -47,9 +47,12 @@ export function registerEnrichFunction(sdk: ISdk, kv: StateKV): void {
               .trigger<
                 { query: string; limit: number },
                 { results: Array<{ observation: { narrative: string } }> }
-              >("mem::search", {
-                query: searchQueries.join(" "),
-                limit: 5,
+              >({
+                function_id: "mem::search",
+                payload: {
+                  query: searchQueries.join(" "),
+                  limit: 5,
+                },
               })
               .catch(() => ({ results: [] }))
           : Promise.resolve({ results: [] });

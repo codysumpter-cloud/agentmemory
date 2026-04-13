@@ -30,7 +30,10 @@ export function stripPrivateData(input: string): string {
 
 export function registerPrivacyFunction(sdk: ISdk): void {
   sdk.registerFunction("mem::privacy", 
-    async (data: { input: string }) => {
+    async (data: { input?: unknown } | undefined) => {
+      if (!data || typeof data.input !== "string") {
+        return { output: "", error: "invalid input: expected string field 'input'" };
+      }
       return { output: stripPrivateData(data.input) };
     },
   );

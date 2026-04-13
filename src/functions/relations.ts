@@ -4,6 +4,7 @@ import type { Memory, MemoryRelation } from "../types.js";
 import { KV, generateId } from "../state/schema.js";
 import { StateKV } from "../state/kv.js";
 import { withKeyedLock } from "../state/keyed-mutex.js";
+import { recordAudit } from "./audit.js";
 
 function computeConfidence(
   source: Memory,
@@ -44,9 +45,9 @@ export function registerRelationsFunction(sdk: ISdk, kv: StateKV): void {
     }) => {
       const ctx = getContext();
       const [firstId, secondId] = [data.sourceId, data.targetId].sort();
+      const pairKey = `mem:${firstId}:${secondId}`;
 
-      return withKeyedLock(`mem:${firstId}`, () =>
-        withKeyedLock(`mem:${secondId}`, async () => {
+      return withKeyedLock(pairKey, async () => {
           const source = await kv.get<Memory>(KV.memories, data.sourceId);
           const target = await kv.get<Memory>(KV.memories, data.targetId);
           if (!source || !target) {
@@ -71,17 +72,34 @@ export function registerRelationsFunction(sdk: ISdk, kv: StateKV): void {
 
           const relationId = generateId("rel");
           await kv.set(KV.relations, relationId, relation);
+          await recordAudit(kv, "evolve", "mem::relate", [relationId], {
+            operation: "relate",
+            type: data.type,
+            sourceId: data.sourceId,
+            targetId: data.targetId,
+            confidence,
+          });
 
           if (!source.relatedIds) source.relatedIds = [];
           if (!source.relatedIds.includes(data.targetId)) {
             source.relatedIds.push(data.targetId);
             await kv.set(KV.memories, data.sourceId, source);
+            await recordAudit(kv, "evolve", "mem::relate", [data.sourceId], {
+              operation: "relate",
+              relationId,
+              updatedRelatedId: data.targetId,
+            });
           }
 
           if (!target.relatedIds) target.relatedIds = [];
           if (!target.relatedIds.includes(data.sourceId)) {
             target.relatedIds.push(data.sourceId);
             await kv.set(KV.memories, data.targetId, target);
+            await recordAudit(kv, "evolve", "mem::relate", [data.targetId], {
+              operation: "relate",
+              relationId,
+              updatedRelatedId: data.sourceId,
+            });
           }
 
           ctx.logger.info("Memory relation created", {
@@ -91,8 +109,7 @@ export function registerRelationsFunction(sdk: ISdk, kv: StateKV): void {
             target: data.targetId,
           });
           return { success: true, relationId, relation };
-        }),
-      );
+        });
     },
   );
 
@@ -125,8 +142,19 @@ export function registerRelationsFunction(sdk: ISdk, kv: StateKV): void {
 
       existing.isLatest = false;
       await kv.set(KV.memories, existing.id, existing);
+      await recordAudit(kv, "evolve", "mem::evolve", [existing.id], {
+        operation: "evolve",
+        action: "mark_non_latest",
+        newId: evolved.id,
+      });
 
       await kv.set(KV.memories, evolved.id, evolved);
+      await recordAudit(kv, "evolve", "mem::evolve", [evolved.id], {
+        operation: "evolve",
+        oldId: existing.id,
+        newId: evolved.id,
+        version: evolved.version,
+      });
 
       const relation: MemoryRelation = {
         type: "supersedes",
@@ -135,7 +163,13 @@ export function registerRelationsFunction(sdk: ISdk, kv: StateKV): void {
         createdAt: now,
         confidence: 1.0,
       };
-      await kv.set(KV.relations, generateId("rel"), relation);
+      const relationId = generateId("rel");
+      await kv.set(KV.relations, relationId, relation);
+      await recordAudit(kv, "evolve", "mem::evolve", [relationId], {
+        operation: "supersedes",
+        oldId: existing.id,
+        newId: evolved.id,
+      });
 
       ctx.logger.info("Memory evolved", {
         oldId: existing.id,

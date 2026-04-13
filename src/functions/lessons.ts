@@ -211,6 +211,14 @@ export function registerLessonsFunctions(sdk: ISdk, kv: StateKV): void {
       const now = Date.now();
       const timestamp = new Date().toISOString();
       const dirty: Lesson[] = [];
+      const auditEvents: Array<{
+        id: string;
+        action: "decay" | "soft-delete";
+        beforeConfidence: number;
+        afterConfidence: number;
+        beforeDeleted: boolean;
+        afterDeleted: boolean;
+      }> = [];
 
       for (const lesson of lessons) {
         if (lesson.deleted) continue;
@@ -225,6 +233,8 @@ export function registerLessonsFunctions(sdk: ISdk, kv: StateKV): void {
         const newConfidence = Math.max(0.05, lesson.confidence - decay);
 
         if (newConfidence !== lesson.confidence) {
+          const beforeConfidence = lesson.confidence;
+          const beforeDeleted = !!lesson.deleted;
           lesson.confidence = Math.round(newConfidence * 1000) / 1000;
           lesson.lastDecayedAt = timestamp;
           lesson.updatedAt = timestamp;
@@ -237,10 +247,35 @@ export function registerLessonsFunctions(sdk: ISdk, kv: StateKV): void {
           }
 
           dirty.push(lesson);
+          auditEvents.push({
+            id: lesson.id,
+            action: lesson.deleted ? "soft-delete" : "decay",
+            beforeConfidence,
+            afterConfidence: lesson.confidence,
+            beforeDeleted,
+            afterDeleted: !!lesson.deleted,
+          });
         }
       }
 
       await Promise.all(dirty.map((l) => kv.set(KV.lessons, l.id, l)));
+      await Promise.all(
+        auditEvents.map((event) =>
+          recordAudit(kv, "lesson_strengthen", "mem::lesson-decay-sweep", [event.id], {
+            action: event.action,
+            actor: "system",
+            reason: "decay-sweep",
+            before: {
+              confidence: event.beforeConfidence,
+              deleted: event.beforeDeleted,
+            },
+            after: {
+              confidence: event.afterConfidence,
+              deleted: event.afterDeleted,
+            },
+          }),
+        ),
+      );
 
       return { success: true, decayed, softDeleted, total: lessons.length };
     },

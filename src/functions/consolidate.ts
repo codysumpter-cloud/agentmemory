@@ -8,6 +8,7 @@ import type {
 } from "../types.js";
 import { KV, generateId } from "../state/schema.js";
 import { StateKV } from "../state/kv.js";
+import { recordAudit } from "./audit.js";
 
 const CONSOLIDATION_SYSTEM = `You are a memory consolidation engine. Given a set of related observations from coding sessions, synthesize them into a single long-term memory.
 
@@ -161,6 +162,10 @@ export function registerConsolidateFunction(
           if (existingMatch) {
             existingMatch.isLatest = false;
             await kv.set(KV.memories, existingMatch.id, existingMatch);
+            await recordAudit(kv, "evolve", "mem::consolidate", [existingMatch.id], {
+              action: "mark_non_latest",
+              concept,
+            });
 
             const evolved: Memory = {
               id: generateId("mem"),
@@ -177,6 +182,12 @@ export function registerConsolidateFunction(
               isLatest: true,
             };
             await kv.set(KV.memories, evolved.id, evolved);
+            await recordAudit(kv, "evolve", "mem::consolidate", [evolved.id], {
+              action: "evolve_memory",
+              oldId: existingMatch.id,
+              newId: evolved.id,
+              concept,
+            });
             existingTitles.add(evolved.title.toLowerCase());
             consolidated++;
           } else {
@@ -190,6 +201,10 @@ export function registerConsolidateFunction(
               isLatest: true,
             };
             await kv.set(KV.memories, memory.id, memory);
+            await recordAudit(kv, "remember", "mem::consolidate", [memory.id], {
+              action: "create_memory",
+              concept,
+            });
             existingTitles.add(memory.title.toLowerCase());
             consolidated++;
           }

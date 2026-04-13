@@ -554,17 +554,31 @@ async function runUpgrade() {
   const dockerBin = whichBinary("docker");
 
   p.log.info(`Working directory: ${cwd}`);
+  let failed = false;
+  const requireSuccess = (ok: boolean, label: string): boolean => {
+    if (!ok) {
+      failed = true;
+      p.log.error(`Upgrade aborted: ${label} failed.`);
+    }
+    return ok;
+  };
 
   if (hasPackageJson) {
     const usePnpm = !!pnpmBin && hasPnpmLock;
     if (usePnpm && pnpmBin) {
-      runCommand(pnpmBin, ["install"], { label: "Refreshing dependencies (pnpm install)" });
+      const installOk = runCommand(pnpmBin, ["install"], {
+        label: "Refreshing dependencies (pnpm install)",
+      });
+      if (!requireSuccess(installOk, "pnpm install")) return process.exit(1);
       runCommand(pnpmBin, ["up", "iii-sdk@latest"], {
         label: "Upgrading iii-sdk to latest",
         optional: true,
       });
     } else if (npmBin) {
-      runCommand(npmBin, ["install"], { label: "Refreshing dependencies (npm install)" });
+      const installOk = runCommand(npmBin, ["install"], {
+        label: "Refreshing dependencies (npm install)",
+      });
+      if (!requireSuccess(installOk, "npm install")) return process.exit(1);
       runCommand(npmBin, ["install", "iii-sdk@latest"], {
         label: "Upgrading iii-sdk to latest",
         optional: true,
@@ -582,10 +596,12 @@ async function runUpgrade() {
       initialValue: true,
     });
     if (upgradeEngine) {
-      runCommand(cargoBin, ["install", "iii-engine", "--force"], {
+      const cargoOk = runCommand(cargoBin, ["install", "iii-engine", "--force"], {
         label: "Upgrading iii-engine (cargo)",
-        optional: true,
       });
+      if (!requireSuccess(cargoOk, "cargo install iii-engine --force")) {
+        return process.exit(1);
+      }
     } else {
       p.log.info("Skipped cargo-based iii-engine upgrade.");
     }
@@ -600,6 +616,10 @@ async function runUpgrade() {
     });
   } else {
     p.log.info("Docker not found. Skipping Docker image refresh.");
+  }
+
+  if (failed) {
+    return process.exit(1);
   }
 
   p.note(

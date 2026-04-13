@@ -463,6 +463,13 @@ export function registerReflectFunctions(
       }
 
       await Promise.all(dirty.map((i) => kv.set(KV.insights, i.id, i)));
+      await recordAudit(kv, "reflect", "mem::insight-decay-sweep", dirty.map((i) => i.id), {
+        event: "insight.decay",
+        decayed,
+        softDeleted,
+        total: items.length,
+        timestamp,
+      });
 
       return { success: true, decayed, softDeleted, total: items.length };
     },

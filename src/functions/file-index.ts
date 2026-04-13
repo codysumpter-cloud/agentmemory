@@ -3,6 +3,7 @@ import { getContext } from "iii-sdk";
 import type { CompressedObservation, Session } from "../types.js";
 import { KV } from "../state/schema.js";
 import { StateKV } from "../state/kv.js";
+import { recordAudit } from "./audit.js";
 
 interface FileHistory {
   file: string;
@@ -19,13 +20,30 @@ interface FileHistory {
 
 export function registerFileIndexFunction(sdk: ISdk, kv: StateKV): void {
   sdk.registerFunction("mem::file-context", 
-    async (data: { sessionId: string; files: string[]; project?: string }) => {
+    async (
+      data: { sessionId: string; files: string[]; project?: string } | undefined,
+    ) => {
       const ctx = getContext();
+      const sessionId =
+        data && typeof data.sessionId === "string" ? data.sessionId.trim() : "";
+      const files = Array.isArray(data?.files)
+        ? data!.files
+            .map((file) => (typeof file === "string" ? file.trim() : ""))
+            .filter(Boolean)
+        : [];
+      if (!sessionId || files.length === 0) {
+        await recordAudit(kv, "observe", "mem::file-context", [sessionId || "unknown"], {
+          error: "invalid_payload",
+          hasSessionId: !!sessionId,
+          fileCount: files.length,
+        });
+        return { context: "", files: [] };
+      }
       const results: FileHistory[] = [];
 
       const sessions = await kv.list<Session>(KV.sessions);
-      let otherSessions = sessions.filter((s) => s.id !== data.sessionId);
-      if (data.project) {
+      let otherSessions = sessions.filter((s) => s.id !== sessionId);
+      if (data?.project) {
         otherSessions = otherSessions.filter((s) => s.project === data.project);
       }
       otherSessions = otherSessions
@@ -43,7 +61,7 @@ export function registerFileIndexFunction(sdk: ISdk, kv: StateKV): void {
         );
       }
 
-      for (const file of data.files) {
+      for (const file of files) {
         const history: FileHistory = { file, observations: [] };
         const normalizedFile = file.replace(/^\.\//, "");
 
@@ -96,7 +114,7 @@ export function registerFileIndexFunction(sdk: ISdk, kv: StateKV): void {
 
       const context = lines.join("\n");
       ctx.logger.info("File context generated", {
-        files: data.files.length,
+        files: files.length,
         results: results.length,
       });
       return { context };

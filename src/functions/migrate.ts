@@ -47,8 +47,9 @@ export function registerMigrateFunction(sdk: ISdk, kv: StateKV): void {
         return { success: false, error: `Database not found: ${data.dbPath}` };
       }
 
+      let db: any;
       try {
-        const db = Database(data.dbPath, { readonly: true });
+        db = Database(data.dbPath, { readonly: true });
         let sessionCount = 0;
         let obsCount = 0;
         let summaryCount = 0;
@@ -132,7 +133,6 @@ export function registerMigrateFunction(sdk: ISdk, kv: StateKV): void {
           summaryCount++;
         }
 
-        db.close();
         ctx.logger.info("Migration complete", {
           sessionCount,
           obsCount,
@@ -143,6 +143,10 @@ export function registerMigrateFunction(sdk: ISdk, kv: StateKV): void {
         const msg = err instanceof Error ? err.message : String(err);
         ctx.logger.error("Migration failed", { error: msg });
         return { success: false, error: "Migration failed" };
+      } finally {
+        try {
+          if (db) db.close();
+        } catch {}
       }
     },
   );

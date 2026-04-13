@@ -41,6 +41,7 @@ export function registerSnapshotFunction(
 
       try {
         await ensureGitRepo(snapshotDir);
+        const ts = new Date().toISOString();
 
         const sessions = await kv.list<Session>(KV.sessions);
         const memories = await kv.list<Memory>(KV.memories);
@@ -58,7 +59,7 @@ export function registerSnapshotFunction(
 
         const state = {
           version: VERSION,
-          timestamp: new Date().toISOString(),
+          timestamp: ts,
           sessions,
           memories,
           graphNodes,
@@ -73,7 +74,7 @@ export function registerSnapshotFunction(
 
         await gitExec(snapshotDir, ["add", "."]);
 
-        const message = data?.message || `Snapshot ${new Date().toISOString()}`;
+        const message = data?.message || `Snapshot ${ts}`;
         try {
           await gitExec(snapshotDir, ["commit", "-m", message]);
         } catch (commitErr) {
@@ -90,7 +91,7 @@ export function registerSnapshotFunction(
         const meta: SnapshotMeta = {
           id: generateId("snap"),
           commitHash,
-          createdAt: new Date().toISOString(),
+          createdAt: ts,
           message,
           stats: {
             sessions: sessions.length,
@@ -144,9 +145,9 @@ export function registerSnapshotFunction(
   });
 
   sdk.registerFunction("mem::snapshot-restore", 
-    async (data: { commitHash: string }) => {
+    async (data: { commitHash: string } | undefined) => {
       const ctx = getContext();
-      if (!data.commitHash) {
+      if (!data || typeof data.commitHash !== "string" || !data.commitHash.trim()) {
         return { success: false, error: "commitHash is required" };
       }
       if (!COMMIT_HASH_RE.test(data.commitHash)) {

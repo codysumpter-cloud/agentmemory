@@ -27,6 +27,7 @@ import type {
 import { KV } from "../state/schema.js";
 import { StateKV } from "../state/kv.js";
 import { VERSION } from "../version.js";
+import { recordAudit } from "./audit.js";
 
 export function registerExportImportFunction(sdk: ISdk, kv: StateKV): void {
   sdk.registerFunction("mem::export", 
@@ -162,6 +163,13 @@ export function registerExportImportFunction(sdk: ISdk, kv: StateKV): void {
       strategy?: "merge" | "replace" | "skip";
     }) => {
       const ctx = getContext();
+      if (
+        !data?.exportData ||
+        typeof data.exportData !== "object" ||
+        typeof (data.exportData as { version?: unknown }).version !== "string"
+      ) {
+        return { success: false, error: "exportData with string version is required" };
+      }
       const strategy = data.strategy || "merge";
       const importData = data.exportData;
 
@@ -315,6 +323,9 @@ export function registerExportImportFunction(sdk: ISdk, kv: StateKV): void {
         for (const p of await kv.list<{ id: string }>(KV.procedural).catch(() => [])) {
           await kv.delete(KV.procedural, p.id);
         }
+        for (const profile of await kv.list<ProjectProfile>(KV.profiles).catch(() => [])) {
+          await kv.delete(KV.profiles, profile.project);
+        }
       }
 
       for (const session of importData.sessions) {
@@ -409,6 +420,20 @@ export function registerExportImportFunction(sdk: ISdk, kv: StateKV): void {
             if (existing) { stats.skipped++; continue; }
           }
           await kv.set(KV.procedural, proc.id, proc);
+        }
+      }
+      if (importData.profiles) {
+        for (const profile of importData.profiles) {
+          if (strategy === "skip") {
+            const existing = await kv
+              .get<ProjectProfile>(KV.profiles, profile.project)
+              .catch(() => null);
+            if (existing) {
+              stats.skipped++;
+              continue;
+            }
+          }
+          await kv.set(KV.profiles, profile.project, profile);
         }
       }
 
@@ -513,6 +538,10 @@ export function registerExportImportFunction(sdk: ISdk, kv: StateKV): void {
       }
 
       ctx.logger.info("Import complete", { strategy, ...stats });
+      await recordAudit(kv, "import", "mem::import", [], {
+        strategy,
+        stats,
+      });
       return { success: true, strategy, ...stats };
     },
   );

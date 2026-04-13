@@ -71,14 +71,22 @@ export function registerQueryExpansionFunction(
   provider: MemoryProvider,
 ): void {
   sdk.registerFunction("mem::expand-query", 
-    async (data: { query: string; maxReformulations?: number }) => {
+    async (data: { query: string; maxReformulations?: number } | undefined) => {
       const ctx = getContext();
-      const maxR = data.maxReformulations ?? 5;
+      if (!data || typeof data.query !== "string" || !data.query.trim()) {
+        ctx.logger.warn("Invalid expand-query payload");
+        return { success: false, error: "query must be a non-empty string" };
+      }
+      const rawMaxR = Number(data.maxReformulations);
+      const maxR = Number.isFinite(rawMaxR)
+        ? Math.max(1, Math.min(10, Math.floor(rawMaxR)))
+        : 5;
+      const query = data.query.trim();
 
       try {
         const response = await provider.compress(
           QUERY_EXPANSION_SYSTEM,
-          `Expand this query for memory retrieval:\n\n"${data.query}"`,
+          `Expand this query for memory retrieval:\n\n"${query}"`,
         );
 
         const parsed = parseExpansionXml(response);
@@ -87,7 +95,7 @@ export function registerQueryExpansionFunction(
           return {
             success: true,
             expansion: {
-              original: data.query,
+              original: query,
               reformulations: [],
               temporalConcretizations: [],
               entityExtractions: [],
@@ -95,11 +103,11 @@ export function registerQueryExpansionFunction(
           };
         }
 
-        parsed.original = data.query;
+        parsed.original = query;
         parsed.reformulations = parsed.reformulations.slice(0, maxR);
 
         ctx.logger.info("Query expanded", {
-          original: data.query,
+          original: query,
           reformulations: parsed.reformulations.length,
           entities: parsed.entityExtractions.length,
         });
@@ -111,7 +119,7 @@ export function registerQueryExpansionFunction(
         return {
           success: true,
           expansion: {
-            original: data.query,
+            original: query,
             reformulations: [],
             temporalConcretizations: [],
             entityExtractions: [],

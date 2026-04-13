@@ -2790,12 +2790,16 @@
     var wsReconnectTimer = null;
     var wsRetries = 0;
     var WS_MAX_RETRIES = 10;
+    var directFailed = false;
+    var directFailures = 0;
+    var DIRECT_FAILURE_THRESHOLD = 2;
 
     function connectWs() {
       if (wsRetries >= WS_MAX_RETRIES) return;
+      var useDirect = !directFailed;
       try {
-        state.ws = new WebSocket(WS_DIRECT_URL);
-        state.ws.__direct = true;
+        state.ws = new WebSocket(useDirect ? WS_DIRECT_URL : WS_URL);
+        state.ws.__direct = useDirect;
       } catch (_) {
         state.ws = new WebSocket(WS_URL);
         state.ws.__direct = false;
@@ -2803,6 +2807,10 @@
       try {
         state.ws.onopen = function() {
           wsRetries = 0;
+          if (state.ws.__direct) {
+            directFailures = 0;
+            directFailed = false;
+          }
           if (!state.ws.__direct) {
             state.ws.send(JSON.stringify({
               type: 'join',
@@ -2822,11 +2830,17 @@
             if (msg.type === 'stream' && msg.event) {
               handleStreamEvent(msg);
             } else if (msg.event_type && msg.data) {
-              handleStreamEvent({ event: { type: 'event', data: msg.data, event_type: msg.event_type } });
+              handleStreamEvent({ event: { type: 'create', data: msg.data, event_type: msg.event_type } });
             }
           } catch {}
         };
         state.ws.onclose = function() {
+          if (state.ws && state.ws.__direct) {
+            directFailures += 1;
+            if (directFailures >= DIRECT_FAILURE_THRESHOLD) {
+              directFailed = true;
+            }
+          }
           document.getElementById('ws-status').textContent = 'reconnecting...';
           document.getElementById('ws-status').className = 'ws-status disconnected';
           wsRetries++;
@@ -2847,6 +2861,10 @@
 
     function handleStreamEvent(msg) {
       var evt = msg.event;
+      if (evt.type === 'event' && evt.data) {
+        routeWsMessage({ observation: evt.data.observation || evt.data });
+        return;
+      }
       if ((evt.type === 'create' || evt.type === 'update') && evt.data) {
         var payload = evt.data;
         var observation = payload.observation || payload;

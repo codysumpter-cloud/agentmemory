@@ -98,9 +98,7 @@ export function registerGovernanceFunction(sdk: ISdk, kv: StateKV): void {
         };
       }
 
-      for (const mem of candidates) {
-        await kv.delete(KV.memories, mem.id);
-      }
+      await Promise.all(candidates.map((mem) => kv.delete(KV.memories, mem.id)));
 
       await recordAudit(
         kv,

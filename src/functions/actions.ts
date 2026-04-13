@@ -3,6 +3,7 @@ import type { StateKV } from "../state/kv.js";
 import { KV, generateId } from "../state/schema.js";
 import { withKeyedLock } from "../state/keyed-mutex.js";
 import type { Action, ActionEdge } from "../types.js";
+import { recordAudit } from "./audit.js";
 
 export function registerActionsFunction(sdk: ISdk, kv: StateKV): void {
   sdk.registerFunction("mem::action-create", 
@@ -81,6 +82,11 @@ export function registerActionsFunction(sdk: ISdk, kv: StateKV): void {
         }
 
         await kv.set(KV.actions, action.id, action);
+        await recordAudit(kv, "action_create", "mem::action-create", [action.id], {
+          actor: data.createdBy || "unknown",
+          action,
+          edges: pendingEdges,
+        });
 
         for (const edge of pendingEdges) {
           await kv.set(KV.actionEdges, edge.id, edge);
@@ -111,6 +117,7 @@ export function registerActionsFunction(sdk: ISdk, kv: StateKV): void {
         if (!action) {
           return { success: false, error: "action not found" };
         }
+        const before = { ...action };
 
         if (data.status !== undefined) action.status = data.status;
         if (data.title !== undefined) action.title = data.title.trim();
@@ -124,6 +131,11 @@ export function registerActionsFunction(sdk: ISdk, kv: StateKV): void {
         action.updatedAt = new Date().toISOString();
 
         await kv.set(KV.actions, action.id, action);
+        await recordAudit(kv, "action_update", "mem::action-update", [action.id], {
+          actor: data.assignedTo || "unknown",
+          before,
+          after: action,
+        });
 
         if (data.status === "done") {
           await propagateCompletion(kv, action.id);
@@ -181,6 +193,10 @@ export function registerActionsFunction(sdk: ISdk, kv: StateKV): void {
       };
 
       await kv.set(KV.actionEdges, edge.id, edge);
+      await recordAudit(kv, "action_create", "mem::action-edge-create", [edge.id], {
+        actor: "unknown",
+        edge,
+      });
       return { success: true, edge };
     },
   );

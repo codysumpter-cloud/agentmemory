@@ -135,31 +135,44 @@ export function registerCompressFunction(
 
         getSearchIndex().add(compressed);
 
-        await sdk.trigger({
-          function_id: "stream::set",
-          payload: {
-          stream_name: STREAM.name,
-          group_id: STREAM.group(data.sessionId),
-          item_id: data.observationId,
-          data: { type: "compressed", observation: compressed },
-          },
-        });
-
-        await sdk.trigger({
-          function_id: "stream::send",
-          payload: {
-            stream_name: STREAM.name,
-            group_id: STREAM.viewerGroup,
-            id: `compressed-${data.observationId}`,
-            event_type: "compressed_observation",
-            data: {
-              type: "compressed",
-              observation: compressed,
-              sessionId: data.sessionId,
+        const streamResults = await Promise.allSettled([
+          sdk.trigger({
+            function_id: "stream::set",
+            payload: {
+              stream_name: STREAM.name,
+              group_id: STREAM.group(data.sessionId),
+              item_id: data.observationId,
+              data: { type: "compressed", observation: compressed },
             },
-          },
-          action: TriggerAction.Void(),
-        });
+          }),
+          sdk.trigger({
+            function_id: "stream::send",
+            payload: {
+              stream_name: STREAM.name,
+              group_id: STREAM.viewerGroup,
+              id: `compressed-${data.observationId}`,
+              event_type: "compressed_observation",
+              data: {
+                type: "compressed",
+                observation: compressed,
+                sessionId: data.sessionId,
+              },
+            },
+            action: TriggerAction.Void(),
+          }),
+        ]);
+        for (const result of streamResults) {
+          if (result.status === "rejected") {
+            ctx.logger.warn("Non-fatal stream publish failure after compress", {
+              sessionId: data.sessionId,
+              observationId: data.observationId,
+              error:
+                result.reason instanceof Error
+                  ? result.reason.message
+                  : String(result.reason),
+            });
+          }
+        }
 
         const latencyMs = Date.now() - startMs;
         if (metricsStore) {

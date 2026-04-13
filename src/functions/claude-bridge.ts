@@ -93,6 +93,11 @@ export function registerClaudeBridgeFunction(
           sections: Object.fromEntries(sections),
           lineCount: content.split("\n").length,
         });
+        await recordAudit(kv, "export", "mem::claude-bridge-read", ["last-read"], {
+          timestamp: new Date().toISOString(),
+          sections: Object.keys(Object.fromEntries(sections)),
+          lineCount: content.split("\n").length,
+        });
 
         ctx.logger.info("Claude bridge: read MEMORY.md", {
           path: config.memoryFilePath,

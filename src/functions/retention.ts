@@ -95,6 +95,7 @@ export function registerRetentionFunctions(
 
         const entry: RetentionScore = {
           memoryId: mem.id,
+          sourceBucket: KV.memories,
           score,
           salience,
           temporalDecay: Math.exp(
@@ -125,6 +126,7 @@ export function registerRetentionFunctions(
 
         const entry: RetentionScore = {
           memoryId: sem.id,
+          sourceBucket: KV.semantic,
           score,
           salience,
           temporalDecay: Math.exp(
@@ -206,7 +208,7 @@ export function registerRetentionFunctions(
       let evicted = 0;
       for (const candidate of candidates) {
         try {
-          await kv.delete(KV.memories, candidate.memoryId);
+          await kv.delete(candidate.sourceBucket || KV.memories, candidate.memoryId);
           await kv.delete(KV.retentionScores, candidate.memoryId);
           evicted++;
         } catch {

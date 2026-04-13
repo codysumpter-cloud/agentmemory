@@ -17,6 +17,28 @@ type McpResponse = {
   body: unknown;
 };
 
+function asNonEmptyString(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+function asNumber(value: unknown, fallback?: number): number | undefined {
+  const n = Number(value);
+  if (Number.isFinite(n)) return n;
+  return fallback;
+}
+
+function parseCsvList(value: unknown): string[] {
+  if (typeof value === "string") {
+    return value.split(",").map((v) => v.trim()).filter(Boolean);
+  }
+  if (Array.isArray(value)) {
+    return value
+      .map((v) => (typeof v === "string" ? v.trim() : ""))
+      .filter(Boolean);
+  }
+  return [];
+}
+
 export function registerMcpEndpoints(
   sdk: ISdk,
   kv: StateKV,
@@ -122,13 +144,20 @@ export function registerMcpEndpoints(
                 body: { error: "files is required for memory_file_history" },
               };
             }
-            const fileList = (args.files as string)
-              .split(",")
-              .map((f: string) => f.trim());
-            const result = await sdk.trigger({ function_id: "mem::file-context", payload: {
-              sessionId: (args.sessionId as string) || "",
-              files: fileList,
-            } });
+            const fileList = parseCsvList(args.files);
+            if (!fileList.length) {
+              return {
+                status_code: 400,
+                body: { error: "files must contain at least one valid path" },
+              };
+            }
+            const payload: { sessionId?: string; files: string[] } = { files: fileList };
+            const sessionId = asNonEmptyString(args.sessionId);
+            if (sessionId) payload.sessionId = sessionId;
+            const result = await sdk.trigger({
+              function_id: "mem::file-context",
+              payload,
+            });
             return {
               status_code: 200,
               body: {
@@ -177,15 +206,16 @@ export function registerMcpEndpoints(
                 body: { error: "query is required for memory_smart_search" },
               };
             }
-            const expandIds =
-              typeof args.expandIds === "string"
-                ? args.expandIds.split(",").map((id: string) => id.trim()).slice(0, 20)
-                : [];
-            const result = await sdk.trigger({ function_id: "mem::smart-search", payload: {
-              query: args.query,
-              expandIds,
-              limit: (args.limit as number) || 10,
-            } });
+            const expandIds = parseCsvList(args.expandIds).slice(0, 20);
+            const limit = Math.max(1, Math.min(100, asNumber(args.limit, 10) ?? 10));
+            const result = await sdk.trigger({
+              function_id: "mem::smart-search",
+              payload: {
+                query: args.query,
+                expandIds,
+                limit,
+              },
+            });
             return {
               status_code: 200,
               body: {
@@ -285,7 +315,10 @@ export function registerMcpEndpoints(
                 ? "mem::claude-bridge-read"
                 : "mem::claude-bridge-sync";
             try {
-              const result = await sdk.trigger(funcId, {});
+              const result = await sdk.trigger({
+                function_id: funcId,
+                payload: {},
+              });
               return {
                 status_code: 200,
                 body: {
@@ -311,12 +344,24 @@ export function registerMcpEndpoints(
 
           case "memory_graph_query": {
             try {
-              const result = await sdk.trigger({ function_id: "mem::graph-query", payload: {
-                startNodeId: args.startNodeId as string,
-                nodeType: args.nodeType as string,
-                maxDepth: args.maxDepth as number,
-                query: args.query as string,
-              } });
+              const payload: {
+                startNodeId?: string;
+                nodeType?: string;
+                maxDepth?: number;
+                query?: string;
+              } = {};
+              const startNodeId = asNonEmptyString(args.startNodeId);
+              const nodeType = asNonEmptyString(args.nodeType);
+              const query = asNonEmptyString(args.query);
+              const maxDepth = asNumber(args.maxDepth);
+              if (startNodeId) payload.startNodeId = startNodeId;
+              if (nodeType) payload.nodeType = nodeType;
+              if (query) payload.query = query;
+              if (maxDepth !== undefined) payload.maxDepth = Math.max(1, Math.min(8, maxDepth));
+              const result = await sdk.trigger({
+                function_id: "mem::graph-query",
+                payload,
+              });
               return {
                 status_code: 200,
                 body: {
@@ -803,16 +848,25 @@ export function registerMcpEndpoints(
             } else if (typeof args.config === "string" && args.config.trim()) {
               try { snlConfig = JSON.parse(args.config); } catch { return { status_code: 400, body: { error: "invalid config JSON" } }; }
             }
-            const snlLinked = typeof args.linkedActionIds === "string" && args.linkedActionIds.trim()
-              ? args.linkedActionIds.split(",").map((s: string) => s.trim()).filter(Boolean)
-              : undefined;
-            const snlResult = await sdk.trigger({ function_id: "mem::sentinel-create", payload: {
-              name: args.name,
-              type: args.type,
-              config: snlConfig,
-              linkedActionIds: snlLinked,
-              expiresInMs: args.expiresInMs,
-            } });
+            const snlLinked = parseCsvList(args.linkedActionIds);
+            const expiresInMs = asNumber(args.expiresInMs);
+            const name = asNonEmptyString(args.name);
+            const type = asNonEmptyString(args.type);
+            const payload: {
+              name?: string;
+              type?: string;
+              config: Record<string, unknown>;
+              linkedActionIds?: string[];
+              expiresInMs?: number;
+            } = { config: snlConfig };
+            if (name) payload.name = name;
+            if (type) payload.type = type;
+            if (snlLinked.length) payload.linkedActionIds = snlLinked;
+            if (expiresInMs !== undefined) payload.expiresInMs = Math.max(0, expiresInMs);
+            const snlResult = await sdk.trigger({
+              function_id: "mem::sentinel-create",
+              payload,
+            });
             return { status_code: 200, body: { content: [{ type: "text", text: JSON.stringify(snlResult, null, 2) }] } };
           }
 
@@ -833,12 +887,16 @@ export function registerMcpEndpoints(
           }
 
           case "memory_sketch_create": {
-            const skResult = await sdk.trigger({ function_id: "mem::sketch-create", payload: {
-              title: args.title,
-              description: args.description,
-              expiresInMs: args.expiresInMs,
-              project: args.project,
-            } });
+            const sketchPayload = {
+              title: asNonEmptyString(args.title),
+              description: asNonEmptyString(args.description),
+              expiresInMs: asNumber(args.expiresInMs),
+              project: asNonEmptyString(args.project),
+            };
+            const skResult = await sdk.trigger({
+              function_id: "mem::sketch-create",
+              payload: sketchPayload,
+            });
             return { status_code: 200, body: { content: [{ type: "text", text: JSON.stringify(skResult, null, 2) }] } };
           }
 

@@ -198,7 +198,11 @@ export function registerObsidianExportFunction(
   kv: StateKV,
 ): void {
   sdk.registerFunction("mem::obsidian-export", 
-    async (data: { vaultDir?: string; types?: string[] }) => {
+    async (data: { vaultDir?: string; types?: string[] } | undefined) => {
+      if (!data) {
+        return { success: false, error: "payload is required" };
+      }
+
       const vaultDir = resolveVaultDir(data.vaultDir);
       if (!vaultDir) {
         return {
@@ -207,7 +211,7 @@ export function registerObsidianExportFunction(
         };
       }
       const exportTypes = new Set(
-        data.types || ["memories", "lessons", "crystals", "sessions"],
+        data.types ?? ["memories", "lessons", "crystals", "sessions"],
       );
 
       const dirs = {

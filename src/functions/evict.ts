@@ -8,6 +8,7 @@ import type {
 } from "../types.js";
 import { KV } from "../state/schema.js";
 import { StateKV } from "../state/kv.js";
+import { recordAudit } from "./audit.js";
 
 interface EvictionConfig {
   staleSessionDays: number;
@@ -69,6 +70,11 @@ export function registerEvictFunction(sdk: ISdk, kv: StateKV): void {
           stats.staleSessions++;
           if (!dryRun) {
             await kv.delete(KV.sessions, session.id).catch(() => {});
+            await recordAudit(kv, "delete", "mem::evict", [session.id], {
+              resource: "session",
+              reason: "stale_session_without_summary",
+              dryRun,
+            });
           }
         }
       }
@@ -93,6 +99,12 @@ export function registerEvictFunction(sdk: ISdk, kv: StateKV): void {
               await kv
                 .delete(KV.observations(session.id), o.id)
                 .catch(() => {});
+              await recordAudit(kv, "delete", "mem::evict", [o.id], {
+                resource: "observation",
+                reason: "low_importance_old_observation",
+                sessionId: session.id,
+                dryRun,
+              });
             }
           }
         }
@@ -118,6 +130,12 @@ export function registerEvictFunction(sdk: ISdk, kv: StateKV): void {
               await kv
                 .delete(KV.observations(o.sessionId), o.id)
                 .catch(() => {});
+              await recordAudit(kv, "delete", "mem::evict", [o.id], {
+                resource: "observation",
+                reason: "project_observation_cap",
+                sessionId: o.sessionId,
+                dryRun,
+              });
             }
           }
         }
@@ -133,6 +151,11 @@ export function registerEvictFunction(sdk: ISdk, kv: StateKV): void {
             evictedMemIds.add(mem.id);
             if (!dryRun) {
               await kv.delete(KV.memories, mem.id).catch(() => {});
+              await recordAudit(kv, "delete", "mem::evict", [mem.id], {
+                resource: "memory",
+                reason: "expired_memory",
+                dryRun,
+              });
             }
           }
         }
@@ -147,6 +170,11 @@ export function registerEvictFunction(sdk: ISdk, kv: StateKV): void {
             stats.nonLatestMemories++;
             if (!dryRun) {
               await kv.delete(KV.memories, mem.id).catch(() => {});
+              await recordAudit(kv, "delete", "mem::evict", [mem.id], {
+                resource: "memory",
+                reason: "old_non_latest_memory",
+                dryRun,
+              });
             }
           }
         }

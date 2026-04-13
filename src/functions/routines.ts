@@ -3,6 +3,7 @@ import type { StateKV } from "../state/kv.js";
 import { KV, generateId } from "../state/schema.js";
 import { withKeyedLock } from "../state/keyed-mutex.js";
 import type { Action, Routine, RoutineStep, RoutineRun } from "../types.js";
+import { recordAudit } from "./audit.js";
 
 export function registerRoutinesFunction(sdk: ISdk, kv: StateKV): void {
   sdk.registerFunction("mem::routine-create", 
@@ -59,6 +60,10 @@ export function registerRoutinesFunction(sdk: ISdk, kv: StateKV): void {
       };
 
       await kv.set(KV.routines, routine.id, routine);
+      await recordAudit(kv, "routine_run", "mem::routine-create", [routine.id], {
+        action: "routine.create",
+        stepCount: routine.steps.length,
+      });
       return { success: true, routine };
     },
   );
@@ -168,6 +173,12 @@ export function registerRoutinesFunction(sdk: ISdk, kv: StateKV): void {
         };
 
         await kv.set(KV.routineRuns, run.id, run);
+        await recordAudit(kv, "routine_run", "mem::routine-run", [run.id], {
+          action: "routine.run",
+          routineId: routine.id,
+          actionIds,
+          initiatedBy: data.initiatedBy || "unknown",
+        });
 
         return {
           success: true,
@@ -246,6 +257,10 @@ export function registerRoutinesFunction(sdk: ISdk, kv: StateKV): void {
 
       if (statusChanged) {
         await kv.set(KV.routineRuns, run.id, run);
+        await recordAudit(kv, "routine_run", "mem::routine-status", [run.id], {
+          action: "routine.status",
+          status: run.status,
+        });
       }
 
       return {
@@ -277,6 +292,10 @@ export function registerRoutinesFunction(sdk: ISdk, kv: StateKV): void {
         routine.frozen = true;
         routine.updatedAt = new Date().toISOString();
         await kv.set(KV.routines, routine.id, routine);
+        await recordAudit(kv, "routine_run", "mem::routine-freeze", [routine.id], {
+          action: "routine.freeze",
+          frozen: true,
+        });
         return { success: true, routine };
       });
     },

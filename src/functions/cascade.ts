@@ -2,6 +2,7 @@ import type { ISdk } from "iii-sdk";
 import type { StateKV } from "../state/kv.js";
 import { KV } from "../state/schema.js";
 import type { Memory, GraphNode, GraphEdge } from "../types.js";
+import { recordAudit } from "./audit.js";
 
 export function registerCascadeFunction(sdk: ISdk, kv: StateKV): void {
   sdk.registerFunction("mem::cascade-update", 
@@ -31,6 +32,11 @@ export function registerCascadeFunction(sdk: ISdk, kv: StateKV): void {
             node.stale = true;
             node.updatedAt = now;
             await kv.set(KV.graphNodes, node.id, node);
+            await recordAudit(kv, "consolidate", "mem::cascade-update", [node.id], {
+              resourceType: "GraphNode",
+              change: "marked stale from superseded memory",
+              supersededMemoryId: data.supersededMemoryId,
+            });
             flaggedNodes++;
           }
         }
@@ -42,6 +48,11 @@ export function registerCascadeFunction(sdk: ISdk, kv: StateKV): void {
           if (overlap) {
             edge.stale = true;
             await kv.set(KV.graphEdges, edge.id, edge);
+            await recordAudit(kv, "consolidate", "mem::cascade-update", [edge.id], {
+              resourceType: "GraphEdge",
+              change: "marked stale from superseded memory",
+              supersededMemoryId: data.supersededMemoryId,
+            });
             flaggedEdges++;
           }
         }

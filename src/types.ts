@@ -783,6 +783,7 @@ export interface TemporalState {
 
 export interface RetentionScore {
   memoryId: string;
+  sourceBucket: string;
   score: number;
   salience: number;
   temporalDecay: number;
