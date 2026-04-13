@@ -8,6 +8,7 @@ import type {
 } from "../types.js";
 import { KV } from "../state/schema.js";
 import type { StateKV } from "../state/kv.js";
+import { recordAudit } from "./audit.js";
 
 const DEFAULT_DECAY: DecayConfig = {
   lambda: 0.01,
@@ -104,8 +105,8 @@ export function registerRetentionFunctions(
           salience,
           temporalDecay: Math.exp(
             -config.lambda *
-              ((Date.now() - new Date(mem.createdAt).getTime()) /
-                (1000 * 60 * 60 * 24)),
+            ((Date.now() - new Date(mem.createdAt).getTime()) /
+              (1000 * 60 * 60 * 24)),
           ),
           reinforcementBoost: 0,
           lastAccessed: mem.updatedAt,
@@ -135,14 +136,14 @@ export function registerRetentionFunctions(
           salience,
           temporalDecay: Math.exp(
             -config.lambda *
-              ((Date.now() - new Date(sem.createdAt).getTime()) /
-                (1000 * 60 * 60 * 24)),
+            ((Date.now() - new Date(sem.createdAt).getTime()) /
+              (1000 * 60 * 60 * 24)),
           ),
           reinforcementBoost:
             score - salience * Math.exp(
               -config.lambda *
-                ((Date.now() - new Date(sem.createdAt).getTime()) /
-                  (1000 * 60 * 60 * 24)),
+              ((Date.now() - new Date(sem.createdAt).getTime()) /
+                (1000 * 60 * 60 * 24)),
             ),
           lastAccessed: sem.lastAccessedAt,
           accessCount: sem.accessCount,
@@ -218,15 +219,35 @@ export function registerRetentionFunctions(
       let evicted = 0;
       for (const candidate of candidates) {
         try {
+          let deletedScope: "semantic" | "episodic" | null = null;
+
           if (candidate.source === "semantic") {
             await kv.delete(KV.semantic, candidate.memoryId);
-            await kv.delete(KV.retentionScores, candidate.memoryId);
-            evicted++;
-          } else {
+            deletedScope = "semantic";
+          } else if (candidate.source === "episodic") {
             await kv.delete(KV.memories, candidate.memoryId);
-            await kv.delete(KV.retentionScores, candidate.memoryId);
-            evicted++;
+            deletedScope = "episodic";
+          } else {
+            const mem = await kv.get<Memory>(KV.memories, candidate.memoryId).catch(() => null);
+            if (mem) {
+              await kv.delete(KV.memories, candidate.memoryId);
+              deletedScope = "episodic";
+            } else {
+              const semMem = await kv.get<SemanticMemory>(KV.semantic, candidate.memoryId).catch(() => null);
+              if (semMem) {
+                await kv.delete(KV.semantic, candidate.memoryId);
+                deletedScope = "semantic";
+              }
+            }
           }
+
+          if (deletedScope) {
+            await recordAudit(kv, "delete", "mem::retention-evict", [candidate.memoryId], { scope: deletedScope });
+          }
+
+          await kv.delete(KV.retentionScores, candidate.memoryId);
+          evicted++;
+
         } catch {
           continue;
         }
