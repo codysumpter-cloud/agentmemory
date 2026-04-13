@@ -802,7 +802,6 @@ const commands: Record<string, () => Promise<void>> = {
   demo: runDemo,
   upgrade: runUpgrade,
   mcp: runMcp,
-  upgrade: runUpgrade,
 };
 
 const handler = commands[args[0] ?? ""] ?? main;
