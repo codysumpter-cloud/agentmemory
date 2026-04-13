@@ -141,13 +141,16 @@ export function registerMeshFunction(
   kv: StateKV,
   meshAuthToken?: string,
 ): void {
-  sdk.registerFunction("mem::mesh-register", 
+  sdk.registerFunction("mem::mesh-register",
     async (data: {
       url: string;
       name: string;
       sharedScopes?: string[];
       syncFilter?: { project?: string };
     }) => {
+      if (!data || typeof data !== "object") {
+        return { success: false, error: "payload required" };
+      }
       if (!data.url || !data.name) {
         return { success: false, error: "url and name are required" };
       }
@@ -190,13 +193,16 @@ export function registerMeshFunction(
     },
   );
 
-  sdk.registerFunction("mem::mesh-sync", 
+  sdk.registerFunction("mem::mesh-sync",
     async (data: { peerId?: string; scopes?: string[]; direction?: "push" | "pull" | "both" }) => {
       if (!meshAuthToken) {
         return {
           success: false,
           error: "mesh sync requires AGENTMEMORY_SECRET",
         };
+      }
+      if (!data || typeof data !== "object") {
+        data = {};
       }
 
       const direction = data.direction || "both";
@@ -326,8 +332,11 @@ export function registerMeshFunction(
     },
   );
 
-  sdk.registerFunction("mem::mesh-receive", 
+  sdk.registerFunction("mem::mesh-receive",
     async (data: MeshSyncPayload) => {
+      if (!data || typeof data !== "object") {
+        return { success: false, error: "payload required" };
+      }
       let accepted = 0;
 
       accepted += await lwwMergeList(kv, KV.memories, data.memories, "mem:memory", "updatedAt");
@@ -362,9 +371,9 @@ export function registerMeshFunction(
     },
   );
 
-  sdk.registerFunction("mem::mesh-remove", 
+  sdk.registerFunction("mem::mesh-remove",
     async (data: { peerId: string }) => {
-      if (!data.peerId) {
+      if (!data || typeof data !== "object" || !data.peerId) {
         return { success: false, error: "peerId is required" };
       }
       await kv.delete(KV.mesh, data.peerId);

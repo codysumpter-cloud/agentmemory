@@ -263,4 +263,33 @@ describe("RetentionScoring", () => {
     const sem2 = result.scores.find((s: any) => s.memoryId === "sem_2");
     expect(sem1.score).toBeGreaterThan(sem2.score);
   });
+
+  it("evicts semantic memories from KV.semantic via sourceBucket", async () => {
+    const { registerRetentionFunctions } = await import(
+      "../src/functions/retention.js"
+    );
+
+    // Semantic memory old enough that its score falls well below the
+    // threshold so eviction will pick it up.
+    const semanticMems = [makeSemanticMemory("sem_evict", 500, 0)];
+
+    const sdk = mockSdk();
+    const kv = mockKV([], semanticMems);
+    registerRetentionFunctions(sdk as never, kv as never);
+
+    await sdk.trigger({ function_id: "mem::retention-score", payload: {} });
+
+    const result = (await sdk.trigger({
+      function_id: "mem::retention-evict",
+      payload: { threshold: 0.9, dryRun: false },
+    })) as any;
+
+    expect(result.success).toBe(true);
+    expect(result.evicted).toBeGreaterThanOrEqual(1);
+
+    const remainingSemantic = await kv.list("mem:semantic");
+    expect(remainingSemantic.length).toBe(0);
+    const remainingMemories = await kv.list("mem:memories");
+    expect(remainingMemories.length).toBe(0);
+  });
 });

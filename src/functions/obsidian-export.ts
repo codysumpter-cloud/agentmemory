@@ -197,10 +197,21 @@ export function registerObsidianExportFunction(
   sdk: ISdk,
   kv: StateKV,
 ): void {
-  sdk.registerFunction("mem::obsidian-export", 
+  sdk.registerFunction("mem::obsidian-export",
     async (data: { vaultDir?: string; types?: string[] } | undefined) => {
-      if (!data) {
+      if (!data || typeof data !== "object") {
         return { success: false, error: "payload is required" };
+      }
+      if (data.vaultDir !== undefined && typeof data.vaultDir !== "string") {
+        return { success: false, error: "vaultDir must be a string" };
+      }
+      if (data.types !== undefined) {
+        if (
+          !Array.isArray(data.types) ||
+          !data.types.every((t): t is string => typeof t === "string")
+        ) {
+          return { success: false, error: "types must be an array of strings" };
+        }
       }
 
       const vaultDir = resolveVaultDir(data.vaultDir);

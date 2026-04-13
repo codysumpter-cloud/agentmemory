@@ -94,7 +94,7 @@ export function registerMcpEndpoints(
             }
             const result = await sdk.trigger({ function_id: "mem::search", payload: {
               query: args.query,
-              limit: (args.limit as number) || 10,
+              limit: typeof args.limit === "number" ? args.limit : 10,
             } });
             return {
               status_code: 200,
@@ -258,7 +258,7 @@ export function registerMcpEndpoints(
             }
             const result = await sdk.trigger({ function_id: "mem::profile", payload: {
               project: args.project,
-              refresh: args.refresh === "true",
+              refresh: args.refresh === true || args.refresh === "true",
             } });
             return {
               status_code: 200,
@@ -454,7 +454,7 @@ export function registerMcpEndpoints(
           case "memory_team_feed": {
             try {
               const result = await sdk.trigger({ function_id: "mem::team-feed", payload: {
-                limit: (args.limit as number) || 20,
+                limit: typeof args.limit === "number" ? args.limit : 20,
               } });
               return {
                 status_code: 200,
@@ -483,7 +483,7 @@ export function registerMcpEndpoints(
             try {
               const result = await sdk.trigger({ function_id: "mem::audit-query", payload: {
                 operation: args.operation as string,
-                limit: (args.limit as number) || 50,
+                limit: typeof args.limit === "number" ? args.limit : 50,
               } });
               return {
                 status_code: 200,
@@ -887,8 +887,15 @@ export function registerMcpEndpoints(
           }
 
           case "memory_sketch_create": {
+            const title = asNonEmptyString(args.title);
+            if (!title) {
+              return {
+                status_code: 400,
+                body: { error: "title is required for memory_sketch_create" },
+              };
+            }
             const sketchPayload = {
-              title: asNonEmptyString(args.title),
+              title,
               description: asNonEmptyString(args.description),
               expiresInMs: asNumber(args.expiresInMs),
               project: asNonEmptyString(args.project),

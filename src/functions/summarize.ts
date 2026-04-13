@@ -14,7 +14,7 @@ import { SummaryOutputSchema } from "../eval/schemas.js";
 import { validateOutput } from "../eval/validator.js";
 import { scoreSummary } from "../eval/quality.js";
 import type { MetricsStore } from "../eval/metrics-store.js";
-import { recordAudit } from "./audit.js";
+import { safeAudit } from "./audit.js";
 
 function parseSummaryXml(
   xml: string,
@@ -122,7 +122,7 @@ export function registerSummarizeFunction(
         const qualityScore = scoreSummary(summaryForValidation);
 
         await kv.set(KV.summaries, sessionId, summary);
-        await recordAudit(kv, "compress", "mem::summarize", [sessionId], {
+        await safeAudit(kv, "compress", "mem::summarize", [sessionId], {
           title: summary.title,
           observationCount: compressed.length,
         });

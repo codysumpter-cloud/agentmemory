@@ -15,6 +15,18 @@ type Response = {
   body: unknown;
 };
 
+function parseOptionalInt(raw: unknown): number | undefined {
+  if (raw === undefined || raw === null || raw === "") return undefined;
+  const n = typeof raw === "number" ? raw : parseInt(String(raw), 10);
+  return Number.isFinite(n) ? n : undefined;
+}
+
+function parseOptionalFloat(raw: unknown): number | undefined {
+  if (raw === undefined || raw === null || raw === "") return undefined;
+  const n = typeof raw === "number" ? raw : parseFloat(String(raw));
+  return Number.isFinite(n) ? n : undefined;
+}
+
 function checkAuth(
   req: ApiRequest,
   secret: string | undefined,
@@ -142,7 +154,7 @@ export function registerApiTriggers(
     },
   });
 
-  sdk.registerFunction("api::observe", 
+  sdk.registerFunction("api::observe",
     async (req: ApiRequest<HookPayload>): Promise<Response> => {
       const authErr = checkAuth(req, secret);
       if (authErr) return authErr;
@@ -183,7 +195,7 @@ export function registerApiTriggers(
     },
   });
 
-  sdk.registerFunction("api::context", 
+  sdk.registerFunction("api::context",
     async (
       req: ApiRequest<{ sessionId: string; project: string; budget?: number }>,
     ): Promise<Response> => {
@@ -266,7 +278,7 @@ export function registerApiTriggers(
     },
   });
 
-  sdk.registerFunction("api::session::start", 
+  sdk.registerFunction("api::session::start",
     async (
       req: ApiRequest<{ sessionId: string; project: string; cwd: string }>,
     ): Promise<Response> => {
@@ -313,7 +325,7 @@ export function registerApiTriggers(
     },
   });
 
-  sdk.registerFunction("api::session::end", 
+  sdk.registerFunction("api::session::end",
     async (req: ApiRequest<{ sessionId: string }>): Promise<Response> => {
       const authErr = checkAuth(req, secret);
       if (authErr) return authErr;
