@@ -879,8 +879,15 @@ export function registerMcpEndpoints(
                 snlTrigPayload = args.result;
               }
             }
+            const sentinelId = asNonEmptyString(args.sentinelId);
+            if (!sentinelId) {
+              return {
+                status_code: 400,
+                body: { error: "sentinelId is required for memory_sentinel_trigger" },
+              };
+            }
             const snlTrigResult = await sdk.trigger({ function_id: "mem::sentinel-trigger", payload: {
-              sentinelId: args.sentinelId,
+              sentinelId,
               result: snlTrigPayload,
             } });
             return { status_code: 200, body: { content: [{ type: "text", text: JSON.stringify(snlTrigResult, null, 2) }] } };
@@ -908,8 +915,15 @@ export function registerMcpEndpoints(
           }
 
           case "memory_sketch_promote": {
+            const sketchId = asNonEmptyString(args.sketchId);
+            if (!sketchId) {
+              return {
+                status_code: 400,
+                body: { error: "sketchId is required for memory_sketch_promote" },
+              };
+            }
             const skpResult = await sdk.trigger({ function_id: "mem::sketch-promote", payload: {
-              sketchId: args.sketchId,
+              sketchId,
               project: args.project,
             } });
             return { status_code: 200, body: { content: [{ type: "text", text: JSON.stringify(skpResult, null, 2) }] } };

@@ -42,12 +42,19 @@ function mockKV(
 function mockSdk() {
   const fns = new Map<string, Function>();
   return {
-    registerFunction: (opts: { id: string }, fn: Function) => {
-      fns.set(opts.id, fn);
+    registerFunction: (idOrOpts: string | { id: string }, fn: Function) => {
+      const id = typeof idOrOpts === "string" ? idOrOpts : idOrOpts.id;
+      fns.set(id, fn);
     },
-    trigger: async (id: string, data: unknown) => {
-      const fn = fns.get(id);
-      if (fn) return fn(data);
+    trigger: async (
+      input: string | { function_id: string; payload: unknown },
+      data?: unknown,
+    ) => {
+      const functionId =
+        typeof input === "string" ? input : input.function_id;
+      const payload = typeof input === "string" ? data : input.payload;
+      const fn = fns.get(functionId);
+      if (fn) return fn(payload);
       return null;
     },
   };

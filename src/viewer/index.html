@@ -2873,12 +2873,13 @@
 
     function handleStreamEvent(msg) {
       var evt = msg.event;
+      var observation;
       if (!evt) return;
       if (evt.event_type && evt.event_type !== 'observation' && evt.event_type !== 'create' && evt.event_type !== 'update') {
         return;
       }
       if (evt.type === 'event' && evt.data) {
-        var observation = evt.data.observation || evt.data;
+        observation = evt.data.observation || evt.data;
         if (looksLikeObservation(observation)) {
           routeWsMessage({ observation: observation });
         }
@@ -2886,7 +2887,7 @@
       }
       if ((evt.type === 'create' || evt.type === 'update') && evt.data) {
         var payload = evt.data;
-        var observation = payload.observation || payload;
+        observation = payload.observation || payload;
         if (looksLikeObservation(observation)) {
           routeWsMessage({ observation: observation });
         }
@@ -2894,7 +2895,7 @@
         var items = Array.isArray(evt.data) ? evt.data : [];
         items.forEach(function(item) {
           var payload = item.data || item;
-          var observation = payload.observation || payload;
+          observation = payload.observation || payload;
           if (looksLikeObservation(observation)) {
             routeWsMessage({ observation: observation });
           }

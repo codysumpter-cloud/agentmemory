@@ -468,6 +468,8 @@ export interface AuditEntry {
     | "signal_send"
     | "checkpoint_resolve"
     | "mesh_sync"
+    | "relation_create"
+    | "relation_update"
     | "sentinel_create"
     | "sentinel_trigger"
     | "sketch_create"

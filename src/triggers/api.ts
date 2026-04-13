@@ -120,9 +120,6 @@ export function registerApiTriggers(
 
   sdk.registerFunction("api::health", 
     async (req: ApiRequest): Promise<Response> => {
-      const authErr = checkAuth(req, secret);
-      if (authErr) return authErr;
-
       const health = await getLatestHealth(kv);
       const functionMetrics = metricsStore ? await metricsStore.getAll() : [];
       const circuitBreaker =
@@ -156,8 +153,6 @@ export function registerApiTriggers(
 
   sdk.registerFunction("api::observe",
     async (req: ApiRequest<HookPayload>): Promise<Response> => {
-      const authErr = checkAuth(req, secret);
-      if (authErr) return authErr;
       const body = (req.body ?? {}) as Record<string, unknown>;
       const hookType = asNonEmptyString(body.hookType);
       const sessionId = asNonEmptyString(body.sessionId);
@@ -199,8 +194,6 @@ export function registerApiTriggers(
     async (
       req: ApiRequest<{ sessionId: string; project: string; budget?: number }>,
     ): Promise<Response> => {
-      const authErr = checkAuth(req, secret);
-      if (authErr) return authErr;
       const body = (req.body ?? {}) as Record<string, unknown>;
       const sessionId = asNonEmptyString(body.sessionId);
       const project = asNonEmptyString(body.project);
@@ -240,8 +233,6 @@ export function registerApiTriggers(
     async (
       req: ApiRequest<{ query: string; limit?: number; project?: string; cwd?: string }>,
     ): Promise<Response> => {
-      const authErr = checkAuth(req, secret);
-      if (authErr) return authErr;
       const body = (req.body ?? {}) as Record<string, unknown>;
       if (typeof body.query !== "string" || !body.query.trim()) {
         return { status_code: 400, body: { error: "query is required and must be a non-empty string" } };
@@ -282,8 +273,6 @@ export function registerApiTriggers(
     async (
       req: ApiRequest<{ sessionId: string; project: string; cwd: string }>,
     ): Promise<Response> => {
-      const authErr = checkAuth(req, secret);
-      if (authErr) return authErr;
       const body = (req.body ?? {}) as Record<string, unknown>;
       const sessionId = asNonEmptyString(body.sessionId);
       const project = asNonEmptyString(body.project);
@@ -327,8 +316,6 @@ export function registerApiTriggers(
 
   sdk.registerFunction("api::session::end",
     async (req: ApiRequest<{ sessionId: string }>): Promise<Response> => {
-      const authErr = checkAuth(req, secret);
-      if (authErr) return authErr;
       const sessionId = asNonEmptyString((req.body as Record<string, unknown>)?.sessionId);
       if (!sessionId) {
         return {
@@ -355,8 +342,6 @@ export function registerApiTriggers(
 
   sdk.registerFunction("api::summarize", 
     async (req: ApiRequest<{ sessionId: string }>): Promise<Response> => {
-      const authErr = checkAuth(req, secret);
-      if (authErr) return authErr;
       const result = await sdk.trigger({ function_id: "mem::summarize", payload: req.body });
       return { status_code: 200, body: result };
     },
@@ -946,13 +931,7 @@ export function registerApiTriggers(
       const authErr = checkAuth(req, secret);
       if (authErr) return authErr;
       try {
-        const parsedLimit = parseOptionalPositiveInt(req.query_params?.["limit"]);
-        if (parsedLimit === null) {
-          return {
-            status_code: 400,
-            body: { error: "invalid numeric parameter: limit" },
-          };
-        }
+        const parsedLimit = parseOptionalInt(req.query_params?.["limit"]);
         const limit = parsedLimit ?? 20;
         const result = await sdk.trigger({ function_id: "mem::team-feed", payload: { limit } });
         return { status_code: 200, body: result };
@@ -989,13 +968,7 @@ export function registerApiTriggers(
     async (req: ApiRequest): Promise<Response> => {
       const authErr = checkAuth(req, secret);
       if (authErr) return authErr;
-      const parsedLimit = parseOptionalPositiveInt(req.query_params?.["limit"]);
-      if (parsedLimit === null) {
-        return {
-          status_code: 400,
-          body: { error: "invalid numeric parameter: limit" },
-        };
-      }
+      const parsedLimit = parseOptionalInt(req.query_params?.["limit"]);
       const result = await sdk.trigger({ function_id: "mem::audit-query", payload: {
         operation: req.query_params?.["operation"],
         limit: parsedLimit ?? 50,
@@ -1250,13 +1223,7 @@ export function registerApiTriggers(
     async (req: ApiRequest): Promise<Response> => {
       const authErr = checkAuth(req, secret);
       if (authErr) return authErr;
-      const parsedLimit = parseOptionalPositiveInt(req.query_params?.["limit"]);
-      if (parsedLimit === null) {
-        return {
-          status_code: 400,
-          body: { error: "invalid numeric parameter: limit" },
-        };
-      }
+      const parsedLimit = parseOptionalInt(req.query_params?.["limit"]);
       const result = await sdk.trigger({ function_id: "mem::frontier", payload: {
         project: req.query_params?.["project"],
         agentId: req.query_params?.["agentId"],
@@ -1448,13 +1415,7 @@ export function registerApiTriggers(
       if (!agentId) {
         return { status_code: 400, body: { error: "agentId query param required" } };
       }
-      const parsedLimit = parseOptionalPositiveInt(req.query_params?.["limit"]);
-      if (parsedLimit === null) {
-        return {
-          status_code: 400,
-          body: { error: "invalid numeric parameter: limit" },
-        };
-      }
+      const parsedLimit = parseOptionalInt(req.query_params?.["limit"]);
       const result = await sdk.trigger({ function_id: "mem::signal-read", payload: {
         agentId,
         unreadOnly: req.query_params?.["unreadOnly"] === "true",
@@ -2059,8 +2020,12 @@ export function registerApiTriggers(
     const denied = checkAuth(req, secret);
     if (denied) return denied;
     const body = (req.body as Record<string, unknown>) || {};
+    const vaultDir = asNonEmptyString(body.vaultDir);
+    if (!vaultDir) {
+      return { status_code: 400, body: { error: "vaultDir is required" } };
+    }
     const types = typeof body.types === "string" ? body.types.split(",").map((t: string) => t.trim()).filter(Boolean) : undefined;
-    const result = await sdk.trigger({ function_id: "mem::obsidian-export", payload: { vaultDir: body.vaultDir, types } });
+    const result = await sdk.trigger({ function_id: "mem::obsidian-export", payload: { vaultDir, types } });
     return { status_code: 200, body: result };
   });
   sdk.registerTrigger({ type: "http", function_id: "api::obsidian-export", config: { api_path: "/agentmemory/obsidian/export", http_method: "POST" } });

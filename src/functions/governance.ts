@@ -3,7 +3,7 @@ import { getContext } from "iii-sdk";
 import type { Memory, GovernanceFilter, AuditEntry } from "../types.js";
 import { KV } from "../state/schema.js";
 import type { StateKV } from "../state/kv.js";
-import { recordAudit, queryAudit } from "./audit.js";
+import { recordAudit, queryAudit, safeAudit } from "./audit.js";
 import { deleteAccessLog } from "./access-tracker.js";
 
 export function registerGovernanceFunction(sdk: ISdk, kv: StateKV): void {
@@ -100,12 +100,18 @@ export function registerGovernanceFunction(sdk: ISdk, kv: StateKV): void {
         };
       }
 
-      const results = await Promise.allSettled(
-        candidates.map(async (mem) => {
-          await kv.delete(KV.memories, mem.id);
-          await deleteAccessLog(kv, mem.id);
-        }),
-      );
+      const BATCH_SIZE = 25;
+      const results: PromiseSettledResult<void>[] = [];
+      for (let i = 0; i < candidates.length; i += BATCH_SIZE) {
+        const batch = candidates.slice(i, i + BATCH_SIZE);
+        const batchResults = await Promise.allSettled(
+          batch.map(async (mem) => {
+            await kv.delete(KV.memories, mem.id);
+            await deleteAccessLog(kv, mem.id);
+          }),
+        );
+        results.push(...batchResults);
+      }
       const successfulIds: string[] = [];
       const failures: Array<{ id: string; error: string }> = [];
       results.forEach((result, i) => {
@@ -119,18 +125,12 @@ export function registerGovernanceFunction(sdk: ISdk, kv: StateKV): void {
         }
       });
 
-      await recordAudit(
-        kv,
-        "delete",
-        "mem::governance-bulk",
-        successfulIds,
-        {
-          filter: data,
-          deleted: successfulIds.length,
-          failed: failures.length,
-          failures: failures.length > 0 ? failures : undefined,
-        },
-      );
+      await safeAudit(kv, "delete", "mem::governance-bulk", successfulIds, {
+        filter: data,
+        deleted: successfulIds.length,
+        failed: failures.length,
+        failures: failures.length > 0 ? failures : undefined,
+      });
 
       ctx.logger.info("Governance bulk delete", {
         deleted: successfulIds.length,
