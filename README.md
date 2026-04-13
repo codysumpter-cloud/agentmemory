@@ -15,12 +15,12 @@
 </p>
 
 <p align="center">
-  <img src="assets/tags/stat-recall.svg" alt="95.2% retrieval R@5" height="38" />
-  <img src="assets/tags/stat-tokens.svg" alt="92% fewer tokens" height="38" />
-  <img src="assets/tags/stat-tools.svg" alt="43 MCP tools" height="38" />
-  <img src="assets/tags/stat-hooks.svg" alt="12 auto hooks" height="38" />
-  <img src="assets/tags/stat-deps.svg" alt="0 external DBs" height="38" />
-  <img src="assets/tags/stat-tests.svg" alt="654 tests passing" height="38" />
+  <picture><source media="(prefers-color-scheme: dark)" srcset="assets/tags/light/stat-recall.svg"><img src="assets/tags/stat-recall.svg" alt="95.2% retrieval R@5" height="38" /></picture>
+  <picture><source media="(prefers-color-scheme: dark)" srcset="assets/tags/light/stat-tokens.svg"><img src="assets/tags/stat-tokens.svg" alt="92% fewer tokens" height="38" /></picture>
+  <picture><source media="(prefers-color-scheme: dark)" srcset="assets/tags/light/stat-tools.svg"><img src="assets/tags/stat-tools.svg" alt="43 MCP tools" height="38" /></picture>
+  <picture><source media="(prefers-color-scheme: dark)" srcset="assets/tags/light/stat-hooks.svg"><img src="assets/tags/stat-hooks.svg" alt="12 auto hooks" height="38" /></picture>
+  <picture><source media="(prefers-color-scheme: dark)" srcset="assets/tags/light/stat-deps.svg"><img src="assets/tags/stat-deps.svg" alt="0 external DBs" height="38" /></picture>
+  <picture><source media="(prefers-color-scheme: dark)" srcset="assets/tags/light/stat-tests.svg"><img src="assets/tags/stat-tests.svg" alt="654 tests passing" height="38" /></picture>
 </p>
 
 <p align="center">
@@ -41,7 +41,7 @@
 
 ---
 
-<h2 id="works-with-every-agent"><img src="assets/tags/section-agents.svg" alt="Works with every agent" height="32" /></h2>
+<h2 id="works-with-every-agent"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/tags/light/section-agents.svg"><img src="assets/tags/section-agents.svg" alt="Works with every agent" height="32" /></picture></h2>
 
 agentmemory works with any agent that supports hooks, MCP, or REST API. All agents share the same memory server.
 
@@ -150,7 +150,7 @@ npx @agentmemory/agentmemory
 
 ---
 
-<h2 id="benchmarks"><img src="assets/tags/section-benchmarks.svg" alt="Benchmarks" height="32" /></h2>
+<h2 id="benchmarks"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/tags/light/section-benchmarks.svg"><img src="assets/tags/section-benchmarks.svg" alt="Benchmarks" height="32" /></picture></h2>
 
 <table>
 <tr>
@@ -182,19 +182,19 @@ npx @agentmemory/agentmemory
 </table>
 
 <p align="center">
-  <img src="assets/tags/stat-recall.svg" alt="95.2% retrieval R@5" height="48" />
-  <img src="assets/tags/stat-tokens.svg" alt="92% fewer tokens" height="48" />
-  <img src="assets/tags/stat-tools.svg" alt="43 MCP tools" height="48" />
-  <img src="assets/tags/stat-hooks.svg" alt="12 auto hooks" height="48" />
-  <img src="assets/tags/stat-deps.svg" alt="0 external DBs" height="48" />
-  <img src="assets/tags/stat-tests.svg" alt="654 tests passing" height="48" />
+  <picture><source media="(prefers-color-scheme: dark)" srcset="assets/tags/light/stat-recall.svg"><img src="assets/tags/stat-recall.svg" alt="95.2% retrieval R@5" height="48" /></picture>
+  <picture><source media="(prefers-color-scheme: dark)" srcset="assets/tags/light/stat-tokens.svg"><img src="assets/tags/stat-tokens.svg" alt="92% fewer tokens" height="48" /></picture>
+  <picture><source media="(prefers-color-scheme: dark)" srcset="assets/tags/light/stat-tools.svg"><img src="assets/tags/stat-tools.svg" alt="43 MCP tools" height="48" /></picture>
+  <picture><source media="(prefers-color-scheme: dark)" srcset="assets/tags/light/stat-hooks.svg"><img src="assets/tags/stat-hooks.svg" alt="12 auto hooks" height="48" /></picture>
+  <picture><source media="(prefers-color-scheme: dark)" srcset="assets/tags/light/stat-deps.svg"><img src="assets/tags/stat-deps.svg" alt="0 external DBs" height="48" /></picture>
+  <picture><source media="(prefers-color-scheme: dark)" srcset="assets/tags/light/stat-tests.svg"><img src="assets/tags/stat-tests.svg" alt="654 tests passing" height="48" /></picture>
 </p>
 
 > Embedding model: `all-MiniLM-L6-v2` (local, free, no API key). Full reports: [`benchmark/LONGMEMEVAL.md`](benchmark/LONGMEMEVAL.md), [`benchmark/QUALITY.md`](benchmark/QUALITY.md), [`benchmark/SCALE.md`](benchmark/SCALE.md). Competitor comparison: [`benchmark/COMPARISON.md`](benchmark/COMPARISON.md) — agentmemory vs mem0, Letta, Khoj, claude-mem, Hippo.
 
 ---
 
-<h2 id="vs-competitors"><img src="assets/tags/section-competitors.svg" alt="vs Competitors" height="32" /></h2>
+<h2 id="vs-competitors"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/tags/light/section-competitors.svg"><img src="assets/tags/section-competitors.svg" alt="vs Competitors" height="32" /></picture></h2>
 
 <table>
 <tr>
@@ -285,7 +285,7 @@ npx @agentmemory/agentmemory
 
 ---
 
-<h2 id="quick-start"><img src="assets/tags/section-quickstart.svg" alt="Quick Start" height="32" /></h2>
+<h2 id="quick-start"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/tags/light/section-quickstart.svg"><img src="assets/tags/section-quickstart.svg" alt="Quick Start" height="32" /></picture></h2>
 
 ### Try it in 30 seconds
 
@@ -329,7 +329,7 @@ Install agentmemory for OpenClaw. Run `npx @agentmemory/agentmemory` in a separa
   "mcpServers": {
     "agentmemory": {
       "command": "npx",
-      "args": ["agentmemory-mcp"]
+      "args": ["-y", "agentmemory-mcp"]
     }
   }
 }
@@ -350,7 +350,7 @@ Install agentmemory for Hermes. Run `npx @agentmemory/agentmemory` in a separate
 mcp_servers:
   agentmemory:
     command: npx
-    args: ["agentmemory-mcp"]
+    args: ["-y", "agentmemory-mcp"]
 
 Verify with `curl http://localhost:3111/agentmemory/health`. Open http://localhost:3113 for the real-time viewer. For deeper 6-hook memory provider integration (pre-LLM context injection, turn capture, MEMORY.md mirroring, system prompt block), copy integrations/hermes from the agentmemory repo to ~/.hermes/plugins/memory/agentmemory.
 ```
@@ -367,14 +367,14 @@ Then add the MCP config for your agent:
 
 | Agent | Setup |
 |---|---|
-| **Cursor** | Add to `~/.cursor/mcp.json`: `{"mcpServers": {"agentmemory": {"command": "npx", "args": ["agentmemory-mcp"]}}}` |
-| **OpenClaw** | Add to MCP config: `{"mcpServers": {"agentmemory": {"command": "npx", "args": ["agentmemory-mcp"]}}}` or use the [gateway plugin](integrations/openclaw/) |
-| **Gemini CLI** | `gemini mcp add agentmemory -- npx agentmemory-mcp` |
-| **Codex CLI** | Add to `.codex/config.yaml`: `mcp_servers: {agentmemory: {command: npx, args: ["agentmemory-mcp"]}}` |
-| **OpenCode** | Add to `.opencode/config.json`: `{"mcpServers": {"agentmemory": {"command": "npx", "args": ["agentmemory-mcp"]}}}` |
+| **Cursor** | Add to `~/.cursor/mcp.json`: `{"mcpServers": {"agentmemory": {"command": "npx", "args": ["-y", "agentmemory-mcp"]}}}` |
+| **OpenClaw** | Add to MCP config: `{"mcpServers": {"agentmemory": {"command": "npx", "args": ["-y", "agentmemory-mcp"]}}}` or use the [gateway plugin](integrations/openclaw/) |
+| **Gemini CLI** | `gemini mcp add agentmemory -- npx -y agentmemory-mcp` |
+| **Codex CLI** | Add to `.codex/config.yaml`: `mcp_servers: {agentmemory: {command: npx, args: ["-y", "agentmemory-mcp"]}}` |
+| **OpenCode** | Add to `opencode.json`: `{"mcp": {"agentmemory": {"type": "local", "command": ["npx", "-y", "agentmemory-mcp"], "enabled": true}}}` |
 | **Hermes Agent** | Add to `~/.hermes/config.yaml` or use the [memory provider plugin](integrations/hermes/) |
 | **Cline / Goose / Kilo Code** | Add MCP server in settings |
-| **Claude Desktop** | Add to `claude_desktop_config.json`: `{"mcpServers": {"agentmemory": {"command": "npx", "args": ["agentmemory-mcp"]}}}` |
+| **Claude Desktop** | Add to `claude_desktop_config.json`: `{"mcpServers": {"agentmemory": {"command": "npx", "args": ["-y", "agentmemory-mcp"]}}}` |
 | **Aider** | REST API: `curl -X POST http://localhost:3111/agentmemory/smart-search -d '{"query": "auth"}'` |
 | **Any agent (32+)** | `npx skillkit install agentmemory` |
 
@@ -387,11 +387,64 @@ npm install && npm run build && npm start
 
 This starts agentmemory with a local `iii-engine` if `iii` is already installed, or falls back to Docker Compose if Docker is available. REST, streams, and the viewer bind to `127.0.0.1` by default.
 
-Install `iii-engine` manually with `cargo install iii-engine` or follow [iii.dev docs](https://iii.dev/docs).
+Install `iii-engine` manually:
+
+- **macOS / Linux:** `curl -fsSL https://install.iii.dev/iii/main/install.sh | sh`
+- **Windows:** download `iii-x86_64-pc-windows-msvc.zip` from [iii-hq/iii releases](https://github.com/iii-hq/iii/releases/latest), extract `iii.exe`, add to PATH
+
+Or use Docker (the bundled `docker-compose.yml` pulls `iiidev/iii:latest`). Full docs: [iii.dev/docs](https://iii.dev/docs).
+
+### Windows
+
+agentmemory runs on Windows 10/11, but the Node.js package alone isn't enough — you also need the `iii-engine` runtime (a separate native binary) as a background process. The official upstream installer is a `sh` script and there is no PowerShell installer or scoop/winget package today, so Windows users have two paths:
+
+**Option A — Prebuilt Windows binary (recommended):**
+
+```powershell
+# 1. Open https://github.com/iii-hq/iii/releases/latest in your browser
+# 2. Download iii-x86_64-pc-windows-msvc.zip
+#    (or iii-aarch64-pc-windows-msvc.zip if you're on an ARM machine)
+# 3. Extract iii.exe somewhere on PATH, or place it at:
+#    %USERPROFILE%\.local\bin\iii.exe
+#    (agentmemory checks that location automatically)
+# 4. Verify:
+iii --version
+
+# 5. Then run agentmemory as usual:
+npx -y @agentmemory/agentmemory
+```
+
+**Option B — Docker Desktop:**
+
+```powershell
+# 1. Install Docker Desktop for Windows
+# 2. Start Docker Desktop and make sure the engine is running
+# 3. Run agentmemory — it will auto-start the bundled compose file:
+npx -y @agentmemory/agentmemory
+```
+
+**Option C — standalone MCP only (no engine):** if you only need the MCP tools for your agent and don't need the REST API, viewer, or cron jobs, skip the engine entirely:
+
+```powershell
+npx -y @agentmemory/agentmemory mcp
+# or via the shim package:
+npx -y agentmemory-mcp
+```
+
+**Diagnostics for Windows:** if `npx @agentmemory/agentmemory` fails, re-run with `--verbose` to see the actual engine stderr. Common failure modes:
+
+| Symptom | Fix |
+|---|---|
+| `iii-engine process started` then `did not become ready within 15s` | Engine crashed on startup — re-run with `--verbose`, check stderr |
+| `Could not start iii-engine` | Neither `iii.exe` nor Docker is installed. See Option A or B above |
+| Port conflict | `netstat -ano \| findstr :3111` to see what's bound, then kill it or use `--port <N>` |
+| Docker fallback skipped even though Docker is installed | Make sure Docker Desktop is actually running (system tray icon) |
+
+> Note: there is no `cargo install iii-engine` — `iii` is not published to crates.io. The only supported install methods are the prebuilt binary above, the upstream `sh` install script (macOS/Linux only), and the Docker image.
 
 ---
 
-<h2 id="why-agentmemory"><img src="assets/tags/section-why.svg" alt="Why agentmemory" height="32" /></h2>
+<h2 id="why-agentmemory"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/tags/light/section-why.svg"><img src="assets/tags/section-why.svg" alt="Why agentmemory" height="32" /></picture></h2>
 
 Every coding agent forgets everything when the session ends. You waste the first 5 minutes of every session re-explaining your stack. agentmemory runs in the background and eliminates that entirely.
 
@@ -424,7 +477,7 @@ Every AI coding agent ships with built-in memory — Claude Code has `MEMORY.md`
 
 ---
 
-<h2 id="how-it-works"><img src="assets/tags/section-how.svg" alt="How It Works" height="32" /></h2>
+<h2 id="how-it-works"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/tags/light/section-how.svg"><img src="assets/tags/section-how.svg" alt="How It Works" height="32" /></picture></h2>
 
 ### Memory Pipeline
 
@@ -489,7 +542,7 @@ Memories decay over time (Ebbinghaus curve). Frequently accessed memories streng
 
 ---
 
-<h2 id="search"><img src="assets/tags/section-search.svg" alt="Search" height="32" /></h2>
+<h2 id="search"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/tags/light/section-search.svg"><img src="assets/tags/section-search.svg" alt="Search" height="32" /></picture></h2>
 
 Triple-stream retrieval combining three signals:
 
@@ -520,7 +573,7 @@ npm install @xenova/transformers
 
 ---
 
-<h2 id="mcp-server"><img src="assets/tags/section-mcp.svg" alt="MCP Server" height="32" /></h2>
+<h2 id="mcp-server"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/tags/light/section-mcp.svg"><img src="assets/tags/section-mcp.svg" alt="MCP Server" height="32" /></picture></h2>
 
 43 tools, 6 resources, 3 prompts, and 4 skills — the most comprehensive MCP memory toolkit for any agent.
 
@@ -598,20 +651,35 @@ npm install @xenova/transformers
 
 ### Standalone MCP
 
-Run without the full server — for any MCP client:
+Run without the full server — for any MCP client. Either of these works:
 
 ```bash
-npx agentmemory-mcp
+npx -y @agentmemory/agentmemory mcp   # canonical (always available)
+npx -y agentmemory-mcp                 # shim package alias
 ```
 
 Or add to your agent's MCP config:
 
+Most agents (Cursor, Claude Desktop, Cline, etc.):
 ```json
 {
   "mcpServers": {
     "agentmemory": {
       "command": "npx",
-      "args": ["agentmemory-mcp"]
+      "args": ["-y", "agentmemory-mcp"]
+    }
+  }
+}
+```
+
+OpenCode (`opencode.json`):
+```json
+{
+  "mcp": {
+    "agentmemory": {
+      "type": "local",
+      "command": ["npx", "-y", "agentmemory-mcp"],
+      "enabled": true
     }
   }
 }
@@ -619,7 +687,7 @@ Or add to your agent's MCP config:
 
 ---
 
-<h2 id="real-time-viewer"><img src="assets/tags/section-viewer.svg" alt="Real-Time Viewer" height="32" /></h2>
+<h2 id="real-time-viewer"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/tags/light/section-viewer.svg"><img src="assets/tags/section-viewer.svg" alt="Real-Time Viewer" height="32" /></picture></h2>
 
 Auto-starts on port `3113`. Live observation stream, session explorer, memory browser, knowledge graph visualization, and health dashboard.
 
@@ -631,7 +699,7 @@ The viewer server binds to `127.0.0.1` by default. The REST-served `/agentmemory
 
 ---
 
-<h2 id="configuration"><img src="assets/tags/section-config.svg" alt="Configuration" height="32" /></h2>
+<h2 id="configuration"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/tags/light/section-config.svg"><img src="assets/tags/section-config.svg" alt="Configuration" height="32" /></picture></h2>
 
 ### LLM Providers
 
@@ -690,7 +758,7 @@ Create `~/.agentmemory/.env`:
 
 ---
 
-<h2 id="api"><img src="assets/tags/section-api.svg" alt="API" height="32" /></h2>
+<h2 id="api"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/tags/light/section-api.svg"><img src="assets/tags/section-api.svg" alt="API" height="32" /></picture></h2>
 
 109 endpoints on port `3111`. The REST API binds to `127.0.0.1` by default. Protected endpoints require `Authorization: Bearer <secret>` when `AGENTMEMORY_SECRET` is set, and mesh sync endpoints require `AGENTMEMORY_SECRET` on both peers.
 
@@ -721,7 +789,7 @@ Full endpoint list: [`src/triggers/api.ts`](src/triggers/api.ts)
 
 ---
 
-<h2 id="architecture"><img src="assets/tags/section-architecture.svg" alt="Architecture" height="32" /></h2>
+<h2 id="architecture"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/tags/light/section-architecture.svg"><img src="assets/tags/section-architecture.svg" alt="Architecture" height="32" /></picture></h2>
 
 Built on [iii-engine](https://iii.dev)'s three primitives — no Express, no Postgres, no Redis.
 
@@ -740,7 +808,7 @@ Built on [iii-engine](https://iii.dev)'s three primitives — no Express, no Pos
 
 </details>
 
-<h2 id="development"><img src="assets/tags/section-development.svg" alt="Development" height="32" /></h2>
+<h2 id="development"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/tags/light/section-development.svg"><img src="assets/tags/section-development.svg" alt="Development" height="32" /></picture></h2>
 
 ```bash
 npm run dev               # Hot reload
@@ -751,6 +819,6 @@ npm run test:integration  # API tests (requires running services)
 
 **Prerequisites:** Node.js >= 20, [iii-engine](https://iii.dev/docs) or Docker
 
-<h2 id="license"><img src="assets/tags/section-license.svg" alt="License" height="32" /></h2>
+<h2 id="license"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/tags/light/section-license.svg"><img src="assets/tags/section-license.svg" alt="License" height="32" /></picture></h2>
 
 [Apache-2.0](LICENSE)

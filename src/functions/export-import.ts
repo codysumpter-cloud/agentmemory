@@ -23,7 +23,9 @@ import type {
   Lesson,
   Insight,
   ExportPagination,
+  AccessLogExport,
 } from "../types.js";
+import { normalizeAccessLog } from "./access-tracker.js";
 import { KV } from "../state/schema.js";
 import { StateKV } from "../state/kv.js";
 import { VERSION } from "../version.js";
@@ -87,6 +89,7 @@ export function registerExportImportFunction(sdk: ISdk, kv: StateKV): void {
         routines,
         signals,
         checkpoints,
+        accessLogs,
       ] = await Promise.all([
         kv.list<GraphNode>(KV.graphNodes).catch(() => []),
         kv.list<GraphEdge>(KV.graphEdges).catch(() => []),
@@ -103,6 +106,7 @@ export function registerExportImportFunction(sdk: ISdk, kv: StateKV): void {
         kv.list<Routine>(KV.routines).catch(() => []),
         kv.list<Signal>(KV.signals).catch(() => []),
         kv.list<Checkpoint>(KV.checkpoints).catch(() => []),
+        kv.list<AccessLogExport>(KV.accessLog).catch(() => []),
       ]);
 
       const exportData: ExportData = {
@@ -130,6 +134,7 @@ export function registerExportImportFunction(sdk: ISdk, kv: StateKV): void {
         routines: routines.length > 0 ? routines : undefined,
         signals: signals.length > 0 ? signals : undefined,
         checkpoints: checkpoints.length > 0 ? checkpoints : undefined,
+        accessLogs: accessLogs.length > 0 ? accessLogs : undefined,
       };
 
       if (maxSessions !== undefined) {
@@ -173,7 +178,7 @@ export function registerExportImportFunction(sdk: ISdk, kv: StateKV): void {
       const strategy = data.strategy || "merge";
       const importData = data.exportData;
 
-      const supportedVersions = new Set(["0.3.0", "0.4.0", "0.5.0", "0.6.0", "0.6.1", "0.7.0", "0.7.2", "0.7.3", "0.7.4", "0.7.5", "0.7.6", "0.7.7", "0.7.9", "0.8.0", "0.8.1"]);
+      const supportedVersions = new Set(["0.3.0", "0.4.0", "0.5.0", "0.6.0", "0.6.1", "0.7.0", "0.7.2", "0.7.3", "0.7.4", "0.7.5", "0.7.6", "0.7.7", "0.7.9", "0.8.0", "0.8.1", "0.8.2", "0.8.3", "0.8.4"]);
       if (!supportedVersions.has(importData.version)) {
         return {
           success: false,
@@ -186,6 +191,7 @@ export function registerExportImportFunction(sdk: ISdk, kv: StateKV): void {
       const MAX_SUMMARIES = 10_000;
       const MAX_OBS_PER_SESSION = 5_000;
       const MAX_TOTAL_OBSERVATIONS = 500_000;
+      const MAX_ACCESS_LOGS = 50_000;
 
       if (!Array.isArray(importData.sessions)) {
         return { success: false, error: "sessions must be an array" };
@@ -325,6 +331,9 @@ export function registerExportImportFunction(sdk: ISdk, kv: StateKV): void {
         }
         for (const profile of await kv.list<ProjectProfile>(KV.profiles).catch(() => [])) {
           await kv.delete(KV.profiles, profile.project);
+        }
+        for (const a of await kv.list<AccessLogExport>(KV.accessLog).catch(() => [])) {
+          await kv.delete(KV.accessLog, a.memoryId);
         }
       }
 
@@ -534,6 +543,34 @@ export function registerExportImportFunction(sdk: ISdk, kv: StateKV): void {
             if (existing) { stats.skipped++; continue; }
           }
           await kv.set(KV.insights, insight.id, insight);
+        }
+      }
+      if (importData.accessLogs) {
+        if (!Array.isArray(importData.accessLogs)) {
+          return { success: false, error: "accessLogs must be an array" };
+        }
+        if (importData.accessLogs.length > MAX_ACCESS_LOGS) {
+          return {
+            success: false,
+            error: `Too many access logs (max ${MAX_ACCESS_LOGS})`,
+          };
+        }
+        const memoryIds = new Set<string>(
+          importData.memories.map((m) => m.id),
+        );
+        for (const raw of importData.accessLogs) {
+          const log = normalizeAccessLog(raw);
+          if (!log.memoryId || !memoryIds.has(log.memoryId)) continue;
+          if (strategy === "skip") {
+            const existing = await kv
+              .get(KV.accessLog, log.memoryId)
+              .catch(() => null);
+            if (existing) {
+              stats.skipped++;
+              continue;
+            }
+          }
+          await kv.set(KV.accessLog, log.memoryId, log);
         }
       }
 

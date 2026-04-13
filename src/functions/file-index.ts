@@ -4,6 +4,7 @@ import type { CompressedObservation, Session } from "../types.js";
 import { KV } from "../state/schema.js";
 import { StateKV } from "../state/kv.js";
 import { recordAudit } from "./audit.js";
+import { recordAccessBatch } from "./access-tracker.js";
 
 interface FileHistory {
   file: string;
@@ -111,6 +112,12 @@ export function registerFileIndexFunction(sdk: ISdk, kv: StateKV): void {
         }
       }
       lines.push("</agentmemory-file-context>");
+
+      const accessedIds: string[] = [];
+      for (const fh of results) {
+        for (const obs of fh.observations) accessedIds.push(obs.obsId);
+      }
+      void recordAccessBatch(kv, accessedIds);
 
       const context = lines.join("\n");
       ctx.logger.info("File context generated", {
