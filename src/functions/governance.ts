@@ -116,12 +116,16 @@ export function registerGovernanceFunction(sdk: ISdk, kv: StateKV): void {
           if (result.status === "fulfilled") {
             successfulIds.push(mem.id);
           } else {
-            failures.push({
-              id: mem.id,
+            ctx.logger.warn("Governance bulk delete failed", {
+              memoryId: mem.id,
               error:
                 result.reason instanceof Error
                   ? result.reason.message
                   : String(result.reason),
+            });
+            failures.push({
+              id: mem.id,
+              error: "delete_failed",
             });
           }
         });
@@ -145,7 +149,7 @@ export function registerGovernanceFunction(sdk: ISdk, kv: StateKV): void {
         failed: failures.length,
       });
       return {
-        success: true,
+        success: failures.length === 0,
         deleted: successfulIds.length,
         failed: failures.length,
         failures: failures.length > 0 ? failures : undefined,

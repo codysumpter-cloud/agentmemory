@@ -22,20 +22,23 @@ interface FileHistory {
 export function registerFileIndexFunction(sdk: ISdk, kv: StateKV): void {
   sdk.registerFunction("mem::file-context", 
     async (
-      data: { sessionId: string; files: string[]; project?: string } | undefined,
+      data: { sessionId?: string; files?: string[]; project?: string } | undefined,
     ) => {
       const ctx = getContext();
       const sessionId =
         data && typeof data.sessionId === "string" ? data.sessionId.trim() : "";
+      const normalizedProject =
+        typeof data?.project === "string" ? data.project.trim() : undefined;
       const files = Array.isArray(data?.files)
         ? data!.files
             .map((file) => (typeof file === "string" ? file.trim() : ""))
             .filter(Boolean)
         : [];
-      if (!sessionId || files.length === 0) {
+      if (files.length === 0) {
         await recordAudit(kv, "observe", "mem::file-context", [sessionId || "unknown"], {
           error: "invalid_payload",
           hasSessionId: !!sessionId,
+          hasProject: !!normalizedProject,
           fileCount: files.length,
         });
         return { context: "", files: [] };
@@ -43,9 +46,11 @@ export function registerFileIndexFunction(sdk: ISdk, kv: StateKV): void {
       const results: FileHistory[] = [];
 
       const sessions = await kv.list<Session>(KV.sessions);
-      let otherSessions = sessions.filter((s) => s.id !== sessionId);
-      if (data?.project) {
-        otherSessions = otherSessions.filter((s) => s.project === data.project);
+      let otherSessions = sessionId
+        ? sessions.filter((s) => s.id !== sessionId)
+        : sessions;
+      if (normalizedProject) {
+        otherSessions = otherSessions.filter((s) => s.project === normalizedProject);
       }
       otherSessions = otherSessions
         .sort(

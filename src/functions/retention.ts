@@ -14,6 +14,7 @@ import {
   deleteAccessLog,
   normalizeAccessLog,
 } from "./access-tracker.js";
+import { recordAudit } from "./audit.js";
 
 const DEFAULT_DECAY: DecayConfig = {
   lambda: 0.01,
@@ -254,14 +255,21 @@ export function registerRetentionFunctions(
   );
 
   sdk.registerFunction("mem::retention-evict", 
-    async (data: {
+    async (data?: {
       threshold?: number;
       dryRun?: boolean;
       maxEvict?: number;
     }) => {
       const ctx = getContext();
-      const threshold = data.threshold ?? DEFAULT_DECAY.tierThresholds.cold;
-      const maxEvict = data.maxEvict ?? 50;
+      const threshold =
+        typeof data?.threshold === "number" && Number.isFinite(data.threshold)
+          ? data.threshold
+          : DEFAULT_DECAY.tierThresholds.cold;
+      const maxEvictRaw =
+        typeof data?.maxEvict === "number" && Number.isInteger(data.maxEvict)
+          ? data.maxEvict
+          : 50;
+      const maxEvict = Math.min(1000, Math.max(0, maxEvictRaw));
 
       const allScores = await kv.list<RetentionScore>(KV.retentionScores);
       const candidates = allScores
@@ -269,7 +277,7 @@ export function registerRetentionFunctions(
         .sort((a, b) => a.score - b.score)
         .slice(0, maxEvict);
 
-      if (data.dryRun) {
+      if (data?.dryRun) {
         return {
           success: true,
           dryRun: true,
@@ -287,7 +295,7 @@ export function registerRetentionFunctions(
         const [primaryDelete, scoreDelete] = await Promise.all([
           kv
             .delete(
-              candidate.sourceBucket || KV.retentionScores,
+              candidate.sourceBucket || KV.semantic,
               candidate.memoryId,
             )
             .then(() => true)
@@ -315,6 +323,18 @@ export function registerRetentionFunctions(
           evicted++;
           await deleteAccessLog(kv, candidate.memoryId).catch((err) => {
             ctx.logger.warn("Retention access-log delete failed", {
+              memoryId: candidate.memoryId,
+              error: err instanceof Error ? err.message : String(err),
+            });
+          });
+          await recordAudit(kv, "delete", "mem::retention-evict", [
+            candidate.memoryId,
+          ], {
+            memoryId: candidate.memoryId,
+            bucket: candidate.sourceBucket || KV.semantic,
+            threshold,
+          }).catch((err) => {
+            ctx.logger.warn("Retention audit failed", {
               memoryId: candidate.memoryId,
               error: err instanceof Error ? err.message : String(err),
             });

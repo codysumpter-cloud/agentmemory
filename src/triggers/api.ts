@@ -21,12 +21,6 @@ function parseOptionalInt(raw: unknown): number | undefined {
   return Number.isFinite(n) ? n : undefined;
 }
 
-function parseOptionalFloat(raw: unknown): number | undefined {
-  if (raw === undefined || raw === null || raw === "") return undefined;
-  const n = typeof raw === "number" ? raw : parseFloat(String(raw));
-  return Number.isFinite(n) ? n : undefined;
-}
-
 function checkAuth(
   req: ApiRequest,
   secret: string | undefined,
@@ -342,7 +336,14 @@ export function registerApiTriggers(
 
   sdk.registerFunction("api::summarize", 
     async (req: ApiRequest<{ sessionId: string }>): Promise<Response> => {
-      const result = await sdk.trigger({ function_id: "mem::summarize", payload: req.body });
+      const sessionId = asNonEmptyString((req.body as Record<string, unknown>)?.sessionId);
+      if (!sessionId) {
+        return { status_code: 400, body: { error: "sessionId is required" } };
+      }
+      const result = await sdk.trigger({
+        function_id: "mem::summarize",
+        payload: { sessionId },
+      });
       return { status_code: 200, body: result };
     },
   );
@@ -374,7 +375,7 @@ export function registerApiTriggers(
     async (req: ApiRequest): Promise<Response> => {
       const authErr = checkAuth(req, secret);
       if (authErr) return authErr;
-      const sessionId = req.query_params["sessionId"] as string;
+      const sessionId = asNonEmptyString(req.query_params?.["sessionId"]);
       if (!sessionId)
         return { status_code: 400, body: { error: "sessionId required" } };
       const observations = await kv.list<CompressedObservation>(
@@ -2022,7 +2023,10 @@ export function registerApiTriggers(
     const body = (req.body as Record<string, unknown>) || {};
     const vaultDir = asNonEmptyString(body.vaultDir);
     if (!vaultDir) {
-      return { status_code: 400, body: { error: "vaultDir is required" } };
+      return {
+        status_code: 400,
+        body: { error: "vaultDir must be a non-empty string" },
+      };
     }
     const types = typeof body.types === "string" ? body.types.split(",").map((t: string) => t.trim()).filter(Boolean) : undefined;
     const result = await sdk.trigger({ function_id: "mem::obsidian-export", payload: { vaultDir, types } });

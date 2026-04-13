@@ -49,7 +49,6 @@ Quick start:
   npx @agentmemory/agentmemory upgrade  # upgrade agentmemory + iii runtime
   npx @agentmemory/agentmemory mcp      # standalone MCP server (no engine)
   npx agentmemory-mcp                   # same as above (shim package)
-  npx @agentmemory/agentmemory upgrade  # upgrade agentmemory + iii runtime
 `);
   process.exit(0);
 }
@@ -712,11 +711,11 @@ async function runUpgrade() {
   const dockerBin = whichBinary("docker");
 
   p.log.info(`Working directory: ${cwd}`);
-  const requireSuccess = (ok: boolean, label: string): boolean => {
+  const requireSuccess = (ok: boolean, label: string): void => {
     if (!ok) {
       p.log.error(`Upgrade aborted: ${label} failed.`);
+      process.exit(1);
     }
-    return ok;
   };
 
   if (hasPackageJson) {
@@ -725,7 +724,7 @@ async function runUpgrade() {
       const installOk = runCommand(pnpmBin, ["install"], {
         label: "Refreshing dependencies (pnpm install)",
       });
-      if (!requireSuccess(installOk, "pnpm install")) return process.exit(1);
+      requireSuccess(installOk, "pnpm install");
       runCommand(pnpmBin, ["up", "iii-sdk@latest"], {
         label: "Upgrading iii-sdk to latest",
         optional: true,
@@ -734,7 +733,7 @@ async function runUpgrade() {
       const installOk = runCommand(npmBin, ["install"], {
         label: "Refreshing dependencies (npm install)",
       });
-      if (!requireSuccess(installOk, "npm install")) return process.exit(1);
+      requireSuccess(installOk, "npm install");
       runCommand(npmBin, ["install", "iii-sdk@latest"], {
         label: "Upgrading iii-sdk to latest",
         optional: true,
@@ -759,9 +758,7 @@ async function runUpgrade() {
       const cargoOk = runCommand(cargoBin, ["install", "iii-engine", "--force"], {
         label: "Upgrading iii-engine (cargo)",
       });
-      if (!requireSuccess(cargoOk, "cargo install iii-engine --force")) {
-        return process.exit(1);
-      }
+      requireSuccess(cargoOk, "cargo install iii-engine --force");
     } else {
       p.log.info("Skipped cargo-based iii-engine upgrade.");
     }
