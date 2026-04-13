@@ -122,7 +122,7 @@ export function registerRetentionFunctions(
   sdk: ISdk,
   kv: StateKV,
 ): void {
-  sdk.registerFunction("mem::retention-score", 
+  sdk.registerFunction("mem::retention-score",
     async (data: { config?: Partial<DecayConfig> }) => {
       const ctx = getContext();
       const resolved = resolveDecayConfig(data?.config);

@@ -125,7 +125,7 @@ describe("RetentionScoring with access log (issue #119)", () => {
       await recordAccess(kv as never, "mem_hot", now - i * 60_000);
     }
 
-    const result = (await sdk.trigger("mem::retention-score", {})) as any;
+    const result = (await sdk.trigger({ function_id: "mem::retention-score", payload: {} })) as any;
 
     const hot = result.scores.find((s: any) => s.memoryId === "mem_hot");
     const cold = result.scores.find((s: any) => s.memoryId === "mem_cold");
@@ -159,7 +159,7 @@ describe("RetentionScoring with access log (issue #119)", () => {
     // mem_old_read: 1 access 60 days ago
     await recordAccess(kv as never, "mem_old_read", now - 60 * 86_400_000);
 
-    const result = (await sdk.trigger("mem::retention-score", {})) as any;
+    const result = (await sdk.trigger({ function_id: "mem::retention-score", payload: {} })) as any;
     const recent = result.scores.find(
       (s: any) => s.memoryId === "mem_recent_read",
     );
@@ -189,7 +189,7 @@ describe("RetentionScoring with access log (issue #119)", () => {
     const kv = mockKV([], [semWith, semWithout]);
     registerRetentionFunctions(sdk as never, kv as never);
 
-    const result = (await sdk.trigger("mem::retention-score", {})) as any;
+    const result = (await sdk.trigger({ function_id: "mem::retention-score", payload: {} })) as any;
     const withEntry = result.scores.find(
       (s: any) => s.memoryId === "sem_with_legacy",
     );
@@ -217,7 +217,7 @@ describe("RetentionScoring with access log (issue #119)", () => {
     const kv = mockKV([], [sem]);
     registerRetentionFunctions(sdk as never, kv as never);
 
-    const result = (await sdk.trigger("mem::retention-score", {})) as any;
+    const result = (await sdk.trigger({ function_id: "mem::retention-score", payload: {} })) as any;
     const entry = result.scores.find((s: any) => s.memoryId === "sem_corrupt");
 
     expect(Number.isFinite(entry.score)).toBe(true);
@@ -251,7 +251,7 @@ describe("RetentionScoring with access log (issue #119)", () => {
 
     registerRetentionFunctions(sdk as never, kv as never);
 
-    const result = (await sdk.trigger("mem::retention-score", {})) as any;
+    const result = (await sdk.trigger({ function_id: "mem::retention-score", payload: {} })) as any;
     const corrupt = result.scores.find(
       (s: any) => s.memoryId === "mem_corrupt",
     );
@@ -280,7 +280,7 @@ describe("RetentionScoring with access log (issue #119)", () => {
 
     registerRetentionFunctions(sdk as never, kv as never);
 
-    const result = (await sdk.trigger("mem::retention-score", {})) as any;
+    const result = (await sdk.trigger({ function_id: "mem::retention-score", payload: {} })) as any;
     expect(result.success).toBe(true);
     const entry = result.scores.find(
       (s: any) => s.memoryId === "mem_resilient",
@@ -306,7 +306,7 @@ describe("RetentionScoring with access log (issue #119)", () => {
       await recordAccess(kv as never, "sem_active", now - i * 30_000);
     }
 
-    const result = (await sdk.trigger("mem::retention-score", {})) as any;
+    const result = (await sdk.trigger({ function_id: "mem::retention-score", payload: {} })) as any;
     const entry = result.scores.find(
       (s: any) => s.memoryId === "sem_active",
     );

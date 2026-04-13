@@ -3,7 +3,7 @@ import { getContext } from "iii-sdk";
 import type { Memory, GovernanceFilter, AuditEntry } from "../types.js";
 import { KV } from "../state/schema.js";
 import type { StateKV } from "../state/kv.js";
-import { recordAudit, queryAudit, safeAudit } from "./audit.js";
+import { recordAudit, safeAudit, queryAudit } from "./audit.js";
 import { deleteAccessLog } from "./access-tracker.js";
 
 export function registerGovernanceFunction(sdk: ISdk, kv: StateKV): void {
@@ -100,37 +100,45 @@ export function registerGovernanceFunction(sdk: ISdk, kv: StateKV): void {
         };
       }
 
-      const BATCH_SIZE = 25;
-      const results: PromiseSettledResult<void>[] = [];
+      const BATCH_SIZE = 50;
+      const successfulIds: string[] = [];
+      const failures: Array<{ id: string; error: string }> = [];
       for (let i = 0; i < candidates.length; i += BATCH_SIZE) {
         const batch = candidates.slice(i, i + BATCH_SIZE);
-        const batchResults = await Promise.allSettled(
+        const results = await Promise.allSettled(
           batch.map(async (mem) => {
             await kv.delete(KV.memories, mem.id);
             await deleteAccessLog(kv, mem.id);
           }),
         );
-        results.push(...batchResults);
+        results.forEach((result, j) => {
+          const mem = batch[j];
+          if (result.status === "fulfilled") {
+            successfulIds.push(mem.id);
+          } else {
+            failures.push({
+              id: mem.id,
+              error:
+                result.reason instanceof Error
+                  ? result.reason.message
+                  : String(result.reason),
+            });
+          }
+        });
       }
-      const successfulIds: string[] = [];
-      const failures: Array<{ id: string; error: string }> = [];
-      results.forEach((result, i) => {
-        if (result.status === "fulfilled") {
-          successfulIds.push(candidates[i].id);
-        } else {
-          failures.push({
-            id: candidates[i].id,
-            error: result.reason instanceof Error ? result.reason.message : String(result.reason),
-          });
-        }
-      });
 
-      await safeAudit(kv, "delete", "mem::governance-bulk", successfulIds, {
-        filter: data,
-        deleted: successfulIds.length,
-        failed: failures.length,
-        failures: failures.length > 0 ? failures : undefined,
-      });
+      await safeAudit(
+        kv,
+        "delete",
+        "mem::governance-bulk",
+        successfulIds,
+        {
+          filter: data,
+          deleted: successfulIds.length,
+          failed: failures.length,
+          failures: failures.length > 0 ? failures : undefined,
+        },
+      );
 
       ctx.logger.info("Governance bulk delete", {
         deleted: successfulIds.length,
