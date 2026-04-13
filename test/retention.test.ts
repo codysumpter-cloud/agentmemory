@@ -242,4 +242,37 @@ describe("RetentionScoring", () => {
     const sem2 = result.scores.find((s: any) => s.memoryId === "sem_2");
     expect(sem1.score).toBeGreaterThan(sem2.score);
   });
+
+  it("evicts both episodic and semantic memories from correct stores", async () => {
+    const { registerRetentionFunctions } = await import(
+      "../src/functions/retention.js"
+    );
+
+    const memories = [
+      makeMemory("mem_old", "fact", 1000),
+    ];
+    const semanticMems = [
+      makeSemanticMemory("sem_old", 1000, 0),
+    ];
+
+    const sdk = mockSdk();
+    const kv = mockKV(memories, semanticMems);
+    registerRetentionFunctions(sdk as never, kv as never);
+
+    await sdk.trigger("mem::retention-score", {});
+    
+    expect((await kv.list("mem:memories")).length).toBe(1);
+    expect((await kv.list("mem:semantic")).length).toBe(1);
+
+    const evictResult = (await sdk.trigger("mem::retention-evict", {
+      threshold: 0.5,
+      dryRun: false,
+    })) as any;
+
+    expect(evictResult.success).toBe(true);
+    expect(evictResult.evicted).toBe(2);
+
+    expect((await kv.list("mem:memories")).length).toBe(0);
+    expect((await kv.list("mem:semantic")).length).toBe(0);
+  });
 });

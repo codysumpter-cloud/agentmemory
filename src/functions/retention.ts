@@ -110,6 +110,7 @@ export function registerRetentionFunctions(
           reinforcementBoost: 0,
           lastAccessed: mem.updatedAt,
           accessCount: 0,
+          source: "episodic",
         };
 
         scores.push(entry);
@@ -145,6 +146,7 @@ export function registerRetentionFunctions(
             ),
           lastAccessed: sem.lastAccessedAt,
           accessCount: sem.accessCount,
+          source: "semantic",
         };
 
         scores.push(entry);
@@ -216,9 +218,15 @@ export function registerRetentionFunctions(
       let evicted = 0;
       for (const candidate of candidates) {
         try {
-          await kv.delete(KV.memories, candidate.memoryId);
-          await kv.delete(KV.retentionScores, candidate.memoryId);
-          evicted++;
+          if (candidate.source === "semantic") {
+            await kv.delete(KV.semantic, candidate.memoryId);
+            await kv.delete(KV.retentionScores, candidate.memoryId);
+            evicted++;
+          } else {
+            await kv.delete(KV.memories, candidate.memoryId);
+            await kv.delete(KV.retentionScores, candidate.memoryId);
+            evicted++;
+          }
         } catch {
           continue;
         }
