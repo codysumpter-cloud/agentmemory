@@ -151,7 +151,7 @@ export function registerCompressFunction(
               stream_name: STREAM.name,
               group_id: STREAM.viewerGroup,
               id: `compressed-${data.observationId}`,
-              event_type: "compressed_observation",
+              type: "compressed_observation",
               data: {
                 type: "compressed",
                 observation: compressed,

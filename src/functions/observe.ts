@@ -115,7 +115,7 @@ export function registerObserveFunction(
             stream_name: STREAM.name,
             group_id: STREAM.viewerGroup,
             id: `raw-${obsId}`,
-            event_type: "raw_observation",
+            type: "raw_observation",
             data: { type: "raw", observation: raw, sessionId: payload.sessionId },
           },
           action: TriggerAction.Void(),

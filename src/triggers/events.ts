@@ -86,7 +86,7 @@ export function registerEventTriggers(sdk: ISdk, kv: StateKV): void {
           stream_name: STREAM.name,
           group_id: STREAM.viewerGroup,
           id: `session-activity-${payload.key}-${Date.now()}`,
-          event_type: "session.activity",
+          type: "session.activity",
           data: {
             sessionId: payload.key,
             observationCount: newCount,
