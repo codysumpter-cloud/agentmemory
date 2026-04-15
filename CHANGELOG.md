@@ -4,6 +4,76 @@ All notable changes to agentmemory will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- Upgraded `iii-sdk` dependency from `^0.11.0-next.8` to stable `^0.11.0`.
+- Aligned stream send payloads with v0.11 wire format by using `type` for `stream::send` events in observe/compress/session-activity paths.
+- Updated migration guidance/examples and diagnostics plugin registration snippets to v0.11 function registration and trigger request shapes.
+
+## [0.8.9] — 2026-04-14
+
+Two UX fixes for the Claude Code plugin install path, both reported in [#139](https://github.com/rohitg00/agentmemory/issues/139) by [@stefanfaur](https://github.com/stefanfaur).
+
+### Fixed
+
+- **Claude Code plugin now auto-wires the `@agentmemory/mcp` stdio server** ([#139](https://github.com/rohitg00/agentmemory/issues/139)) — the plugin previously only shipped hooks and skills, and the README told Claude Code users to wire up the MCP server manually. A new `plugin/.mcp.json` declares the MCP server so `/plugin install agentmemory@agentmemory` auto-starts it when the plugin is enabled. No extra config step.
+- **Skills no longer fail under Claude Code's sandbox with "Contains expansion"** ([#139](https://github.com/rohitg00/agentmemory/issues/139)) — the `recall` and `session-history` skills used pre-execution bash with `$(...)` / `${VAR:-default}` shell expansion, which Claude Code's sandbox rejects by pattern match. All four plugin skills (`recall`, `remember`, `forget`, `session-history`) are now rewritten as pure prompts that tell Claude to use the MCP tools directly. No bash, no sandbox issues, no shell escaping — and the skills run faster because they no longer fork a curl subprocess on every invocation.
+
+### Added
+
+- **Standalone MCP shim now implements `memory_smart_search` and `memory_governance_delete`** — the `@agentmemory/mcp` stdio server only exposed 5 tools (`memory_save`, `memory_recall`, `memory_sessions`, `memory_export`, `memory_audit`), so the rewritten plugin skills would have failed at runtime referencing tools the standalone didn't know about. Now ships 7 tools. `memory_smart_search` falls back to the same substring filter as `memory_recall` since the standalone shim doesn't have BM25/vector/graph without the full engine. `memory_governance_delete` takes `memoryIds` as an array or comma-separated string and returns `{deleted, requested, reason}`.
+- **`memory_save` accepts `concepts`/`files` as arrays or comma-separated strings** — the old standalone only accepted CSV strings, which would silently drop array inputs. New `normalizeList()` helper handles both.
+- **`memory_sessions` honours a `limit` arg** (default 20) — previously returned every session.
+- **8 regression tests** in `test/mcp-standalone.test.ts` covering array/CSV inputs for `memory_save`, `memory_smart_search` substring fallback, `memory_sessions` limit, `memory_governance_delete` happy path + unknown-id skip + validation. Full suite: 715 passing.
+
+### Changed
+
+- **README Claude Code install snippet** — now explicitly notes that `/plugin install agentmemory` registers hooks + skills AND auto-wires the MCP server via `.mcp.json`, with no extra step.
+
+[0.8.9]: https://github.com/rohitg00/agentmemory/compare/v0.8.8...v0.8.9
+
+## [0.8.8] — 2026-04-14
+
+**Behavior change**: per-observation LLM compression is now opt-in. If you were relying on LLM-generated summaries (the old default), set `AGENTMEMORY_AUTO_COMPRESS=true` in `~/.agentmemory/.env` and restart.
+
+### Fixed
+
+- **Stop silently burning Claude API tokens on every tool invocation** ([#138](https://github.com/rohitg00/agentmemory/issues/138), thanks [@olcor1](https://github.com/olcor1)) — the old `mem::observe` path fired `mem::compress` unconditionally on every PostToolUse hook, which called Claude via the user's `ANTHROPIC_API_KEY` to turn each raw observation into a structured summary. An active coding session (50-200 tool calls/hour) could run through hundreds of thousands of tokens in minutes, which is the exact opposite of what a memory tool should do. The new default path skips the LLM call and uses a zero-token **synthetic compression** step that derives `type`, `title`, `narrative`, and `files` from the raw tool name, tool input, and tool output directly. Recall and BM25 search still work — you just lose the LLM-generated summaries unless you opt in.
+
+### Added
+
+- **`AGENTMEMORY_AUTO_COMPRESS` env var** — default `false`. When `true`, restores the old per-observation LLM compression path. The engine startup banner now prints a loud warning when it's on, reminding you that it spends tokens proportional to your session tool-use frequency.
+- **`src/functions/compress-synthetic.ts`** — the new zero-LLM compression helper. `buildSyntheticCompression(raw)` maps tool names to `ObservationType` (via camelCase-aware substring matching for `Read`/`Write`/`Edit`/`Bash`/`Grep`/`WebFetch`/`Task`/etc.), pulls file paths out of `tool_input.file_path` / `pattern` / etc., and truncates narratives to 400 chars so one huge tool output can't blow up the BM25 index.
+- **Regression test** `test/auto-compress.test.ts` — 8 cases covering the default path (no `mem::compress` trigger, synthetic observation stored in KV), explicit opt-in, tool-name-to-type mapping, file-path extraction, narrative truncation, and the `post_tool_failure` → `error` path. Full suite: 707 passing.
+
+### Infrastructure
+
+- **Startup banner** (`src/index.ts:171`) now prints either `Auto-compress: OFF (default, #138)` or a prominent warning when opt-in is enabled, so the mode is never silent.
+- **Migration note**: if you were running 0.8.7 or earlier with `ANTHROPIC_API_KEY` set, your token usage will drop sharply on upgrade. Search quality may also drop slightly because narratives are now derived from raw tool I/O instead of Claude-generated summaries. If you want the old behavior:
+  ```env
+  # ~/.agentmemory/.env
+  AGENTMEMORY_AUTO_COMPRESS=true
+  ```
+  and restart. Existing compressed observations in `~/.agentmemory/` are untouched.
+
+[0.8.8]: https://github.com/rohitg00/agentmemory/compare/v0.8.7...v0.8.8
+
+## [0.8.7] — 2026-04-14
+
+One-line fix for a brown-paper-bag bug reported in [#136](https://github.com/rohitg00/agentmemory/issues/136).
+
+### Fixed
+
+- **`npx @agentmemory/agentmemory` no longer crashes with "`/app/config.yaml` is a directory"** ([#136](https://github.com/rohitg00/agentmemory/issues/136), thanks [@stefano-medapps](https://github.com/stefano-medapps)) — the published tarball shipped `docker-compose.yml` but **not** `iii-config.docker.yaml`, even though the compose file mounts `./iii-config.docker.yaml:/app/config.yaml:ro`. Docker resolves missing host-path bind sources by silently creating them as empty directories, so the iii-engine container mounted an empty dir at `/app/config.yaml` and crashed with `Error: Failed to read config file '/app/config.yaml': Is a directory (os error 21)`. The `files` array in `package.json` now includes `iii-config.docker.yaml` alongside the regular `iii-config.yaml`.
+
+### Infrastructure
+
+- New regression test in `test/consistency.test.ts` parses every `./<path>:<container>` bind mount in `docker-compose.yml` and asserts the source file is shipped via the `files` array. Catches the class of bug where a new bind mount is added to compose without a corresponding entry in `files`.
+
+[0.8.7]: https://github.com/rohitg00/agentmemory/compare/v0.8.6...v0.8.7
+
 ## [0.8.6] — 2026-04-13
 
 Finishes the `npx <shim>` story from #120 by moving the standalone package under the `@agentmemory` scope.

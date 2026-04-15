@@ -49,10 +49,5 @@ export function mockSdk() {
       if (!fn) throw new Error(`No function: ${id}`);
       return fn(payload);
     },
-    triggerVoid: async (id: string, data: unknown) => {
-      const fn = functions.get(id);
-      if (!fn) return;
-      await fn(data);
-    },
   };
 }
