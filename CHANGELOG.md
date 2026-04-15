@@ -11,6 +11,39 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 - Upgraded `iii-sdk` dependency from `^0.11.0-next.8` to stable `^0.11.0`.
 - Aligned stream send payloads with v0.11 wire format by using `type` for `stream::send` events in observe/compress/session-activity paths.
 - Updated migration guidance/examples and diagnostics plugin registration snippets to v0.11 function registration and trigger request shapes.
+## [0.8.10] — 2026-04-15
+
+**Behavior change**: the PreToolUse and SessionStart hooks no longer run enrichment by default. SessionStart saves ~1-2K input tokens per session you start (the only path that was actually reaching the model, per the [Claude Code hook docs](https://code.claude.com/docs/en/hooks.md)). PreToolUse stops spawning a Node process and POSTing to `/agentmemory/enrich` on every file-touching tool call — a pure resource cleanup, not a token fix. If you were relying on either path, set `AGENTMEMORY_INJECT_CONTEXT=true` in `~/.agentmemory/.env` and restart. Observations are still captured via PostToolUse regardless.
+
+### Fixed
+
+- **Gate SessionStart context injection** ([#143](https://github.com/rohitg00/agentmemory/issues/143), thanks [@adrianricardo](https://github.com/adrianricardo)) — `src/hooks/session-start.ts` previously wrote ~1-2K chars of project context to stdout at every session start. Per the [Claude Code hook docs](https://code.claude.com/docs/en/hooks.md), `SessionStart` stdout is explicitly injected into the model's context ("where stdout is added as context that Claude can see and act on"), so this was adding real tokens to the first turn of every new session. Now gated behind `AGENTMEMORY_INJECT_CONTEXT`, default off. The session still gets registered for observation tracking — only the stdout echo is skipped.
+- **Skip the PreToolUse enrichment round-trip when disabled** ([#143](https://github.com/rohitg00/agentmemory/issues/143)) — `src/hooks/pre-tool-use.ts` was POSTing `/agentmemory/enrich` on every `Edit`/`Write`/`Read`/`Glob`/`Grep` tool call and piping up to 4000 chars to stdout. The Claude Code docs make clear that PreToolUse stdout goes to the debug log, not the model context, so this was **not** burning user tokens — but it was spawning a Node process + full HTTP round-trip ~20x per user message with no effect on the conversation. Gating it makes the disabled hot path a ~15ms no-op Node startup instead of a ~100-300ms REST round-trip. **This is a resource cleanup, not a token fix**; leaving the gate in place protects forward in case Claude Code ever changes PreToolUse to inject stdout like SessionStart does.
+- **`mem::retention-evict` no longer leaks semantic memories** ([#124](https://github.com/rohitg00/agentmemory/issues/124)) — the eviction loop was unconditionally calling `kv.delete(KV.memories, id)` for every below-threshold candidate, but retention scores are computed for both episodic (`KV.memories`) and semantic (`KV.semantic`) memories. When a candidate came from `KV.semantic`, the delete silently became a no-op (key wasn't in `mem:memories` to begin with) and the semantic row stayed alive forever with a sub-threshold score. Semantic memories could not be evicted by this path at all. Fix: add a `source: "episodic" | "semantic"` discriminator to `RetentionScore`, tag it at score creation, and branch the delete on `candidate.source`. For pre-0.8.10 rows with no `source` field (including semantic retention rows written by the old scorer), the loop probes both namespaces to find where the `memoryId` actually lives, so upgraded stores get their stranded semantic memories evicted without needing to re-score first. The response shape now also includes `evictedEpisodic` and `evictedSemantic` counts for observability.
+- **`mem::retention-evict` now emits an audit record per sweep** ([#124](https://github.com/rohitg00/agentmemory/issues/124)) — retention eviction performs structural deletes (memories, retention scores, access logs) but was not calling `recordAudit()`, which made evictions invisible to audit consumers. Now batched one audit row per non-zero sweep, with `operation: "delete"`, `functionId: "mem::retention-evict"`, `targetIds` containing every evicted id, and `details.evicted` / `evictedEpisodic` / `evictedSemantic` / `threshold` for context. Zero-eviction sweeps intentionally do not write an audit row.
+
+### Honest note on #143
+
+My initial diagnosis on the #143 thread pattern-matched too quickly to #138 and overclaimed that PreToolUse stdout was the smoking gun behind "Claude Pro burned in 4 messages". It wasn't — per the docs, PreToolUse stdout is debug-log only. The actual background cause is that [Claude Pro's Claude Code quotas are documented as tight](https://www.theregister.com/2026/03/31/anthropic_claude_code_limits/) and Anthropic has publicly confirmed "people are hitting usage limits in Claude Code way faster than expected." agentmemory contributes ~1-2K tokens per session via SessionStart, and that contribution is worth eliminating, but this release does not and cannot make Claude Pro's base quotas roomier. Users on heavy tool-call workloads should consider Max 5x or Team tiers regardless of whether agentmemory is installed.
+
+0.8.8's #138 fix (opt-in `mem::compress` via `AGENTMEMORY_AUTO_COMPRESS`) remains the correct fix for users with `ANTHROPIC_API_KEY` set — that path was a real per-observation Claude API burn and is unrelated to the Claude Code hook pipeline.
+
+### Added
+
+- **`AGENTMEMORY_INJECT_CONTEXT` env var** — default `false`. When `true`, restores the old SessionStart stdout write and the old PreToolUse `/enrich` round-trip. Startup banner prints a loud warning when it's on, mirroring the `AGENTMEMORY_AUTO_COMPRESS` warning from 0.8.8.
+- **`isContextInjectionEnabled()`** helper in `src/config.ts` — single source of truth for the flag. The hooks read the env var directly (they're spawned as standalone `.mjs` files by Claude Code and don't bootstrap through `src/index.ts`), so the helper is there for the startup banner and future code paths.
+- **5 subprocess regression tests** in `test/context-injection.test.ts` — spawns the compiled `pre-tool-use.mjs` and `session-start.mjs` hooks with real stdin/stdout pipes and asserts that stdout is empty when the env var is unset, when it's explicitly `false`, and that the disabled PreToolUse path exits under 1 second. Also asserts that the opt-in path with an unreachable backend still exits cleanly. Full suite: **724 passing** (was 719 + 5 new).
+
+### Infrastructure
+
+- **Startup banner** (`src/index.ts`) now prints `Context injection: OFF (default, #143)` on normal startup and a prominent WARNING when opt-in is enabled, so the mode is never silent.
+- **Migration note**: if you were relying on the old SessionStart project-context injection or the old PreToolUse enrichment round-trip, add to `~/.agentmemory/.env`:
+  ```env
+  AGENTMEMORY_INJECT_CONTEXT=true
+  ```
+  and restart Claude Code. You'll see the startup warning in the engine logs confirming it's active.
+
+[0.8.10]: https://github.com/rohitg00/agentmemory/compare/v0.8.9...v0.8.10
 
 ## [0.8.9] — 2026-04-14
 

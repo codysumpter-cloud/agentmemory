@@ -745,6 +745,20 @@ Create `~/.agentmemory/.env`:
                                    # LLM provider to compress the
                                    # observation — expect significant
                                    # token spend on active sessions.
+# AGENTMEMORY_INJECT_CONTEXT=false # OFF by default (#143). When on:
+                                   # - SessionStart may inject ~1-2K
+                                   #   chars of project context into
+                                   #   the first turn of each session
+                                   #   (this is what actually reaches
+                                   #   the model — Claude Code treats
+                                   #   SessionStart stdout as context)
+                                   # - PreToolUse fires /agentmemory/enrich
+                                   #   on every file-touching tool call
+                                   #   (resource cleanup, not a token
+                                   #   fix — PreToolUse stdout is debug
+                                   #   log only per Claude Code docs)
+                                   # Observations are still captured via
+                                   # PostToolUse regardless of this flag.
 # GRAPH_EXTRACTION_ENABLED=false
 # CONSOLIDATION_ENABLED=true
 # LESSON_DECAY_ENABLED=true

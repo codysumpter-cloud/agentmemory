@@ -152,6 +152,13 @@ export function registerRetentionFunctions(
               (1000 * 60 * 60 * 24)),
         );
 
+      // Build all entries in memory first, then flush with Promise.all
+      // so a full rescore is one batched KV write instead of N sequential
+      // round-trips. Separate counts for the audit record at the end.
+      const pendingWrites: Array<[string, RetentionScore]> = [];
+      let episodicScored = 0;
+      let semanticScored = 0;
+
       for (const mem of memories) {
         if (!mem.isLatest) continue;
         const log = logsById.get(mem.id) ?? emptyAccessLog(mem.id);
@@ -168,7 +175,7 @@ export function registerRetentionFunctions(
 
         const entry: RetentionScore = {
           memoryId: mem.id,
-          sourceBucket: KV.memories,
+          source: "episodic",
           score,
           salience,
           temporalDecay,
@@ -178,7 +185,8 @@ export function registerRetentionFunctions(
         };
 
         scores.push(entry);
-        await kv.set(KV.retentionScores, mem.id, entry);
+        pendingWrites.push([mem.id, entry]);
+        episodicScored++;
       }
 
       for (const sem of semanticMems) {
@@ -212,7 +220,7 @@ export function registerRetentionFunctions(
 
         const entry: RetentionScore = {
           memoryId: sem.id,
-          sourceBucket: KV.semantic,
+          source: "semantic",
           score,
           salience,
           temporalDecay,
@@ -222,8 +230,19 @@ export function registerRetentionFunctions(
         };
 
         scores.push(entry);
-        await kv.set(KV.retentionScores, sem.id, entry);
+        pendingWrites.push([sem.id, entry]);
+        semanticScored++;
       }
+
+      // Flush all retention rows in parallel. N sequential writes was
+      // making full rescores O(n) round-trips on stores with 1000+
+      // memories; batching drops that to O(1) wall time on the KV
+      // backends that can pipeline.
+      await Promise.all(
+        pendingWrites.map(([id, entry]) =>
+          kv.set(KV.retentionScores, id, entry),
+        ),
+      );
 
       scores.sort((a, b) => b.score - a.score);
 
@@ -249,6 +268,22 @@ export function registerRetentionFunctions(
         total: scores.length,
         ...tiers,
       });
+
+      // Audit the rescore as a single batched event per sweep. We
+      // intentionally pass an empty targetIds array — a mature store
+      // can have 1000+ memory ids per rescore and flooding the audit
+      // log with every memoryId on every cron tick is worse than
+      // recording just the summary. The details payload has enough
+      // context for observability (counts per source + per tier).
+      if (scores.length > 0) {
+        await recordAudit(kv, "retention_score", "mem::retention-score", [], {
+          total: scores.length,
+          episodic: episodicScored,
+          semantic: semanticScored,
+          tiers,
+          config,
+        });
+      }
 
       return { success: true, total: scores.length, tiers, scores };
     },
@@ -289,69 +324,74 @@ export function registerRetentionFunctions(
         };
       }
 
+      // Branch on source (#124). Pre-0.8.10 rows have no `source` field,
+      // and that includes semantic retention rows that were written by
+      // the old scorer — so we can't just default to episodic, that
+      // would silently no-op the delete and leave the stranded semantic
+      // memory alive (the exact bug #124 is about). When `source` is
+      // missing, probe both namespaces to find where the memoryId
+      // actually lives and route the delete there. After one re-score
+      // (mem::retention-score) every row will have the correct tag.
       let evicted = 0;
-      let failed = 0;
+      let evictedEpisodic = 0;
+      let evictedSemantic = 0;
+      const evictedIds: string[] = [];
       for (const candidate of candidates) {
-        const [primaryDelete, scoreDelete] = await Promise.all([
-          kv
-            .delete(
-              candidate.sourceBucket || KV.semantic,
-              candidate.memoryId,
-            )
-            .then(() => true)
-            .catch((err) => {
-              ctx.logger.warn("Retention primary delete failed", {
-                memoryId: candidate.memoryId,
-                sourceBucket: candidate.sourceBucket,
-                error: err instanceof Error ? err.message : String(err),
-              });
-              return false;
-            }),
-          kv
-            .delete(KV.retentionScores, candidate.memoryId)
-            .then(() => true)
-            .catch((err) => {
-              ctx.logger.warn("Retention score delete failed", {
-                memoryId: candidate.memoryId,
-                error: err instanceof Error ? err.message : String(err),
-              });
-              return false;
-            }),
-        ]);
-
-        if (primaryDelete || scoreDelete) {
+        try {
+          let scope: string;
+          let resolvedSource: "episodic" | "semantic";
+          if (candidate.source === "semantic") {
+            scope = KV.semantic;
+            resolvedSource = "semantic";
+          } else if (candidate.source === "episodic") {
+            scope = KV.memories;
+            resolvedSource = "episodic";
+          } else {
+            const episodic = await kv.get(KV.memories, candidate.memoryId);
+            if (episodic !== null) {
+              scope = KV.memories;
+              resolvedSource = "episodic";
+            } else {
+              scope = KV.semantic;
+              resolvedSource = "semantic";
+            }
+          }
+          await kv.delete(scope, candidate.memoryId);
+          await kv.delete(KV.retentionScores, candidate.memoryId);
+          await deleteAccessLog(kv, candidate.memoryId);
           evicted++;
-          await deleteAccessLog(kv, candidate.memoryId).catch((err) => {
-            ctx.logger.warn("Retention access-log delete failed", {
-              memoryId: candidate.memoryId,
-              error: err instanceof Error ? err.message : String(err),
-            });
-          });
-          await recordAudit(kv, "delete", "mem::retention-evict", [
-            candidate.memoryId,
-          ], {
-            memoryId: candidate.memoryId,
-            bucket: candidate.sourceBucket || KV.semantic,
-            threshold,
-          }).catch((err) => {
-            ctx.logger.warn("Retention audit failed", {
-              memoryId: candidate.memoryId,
-              error: err instanceof Error ? err.message : String(err),
-            });
-          });
+          evictedIds.push(candidate.memoryId);
+          if (resolvedSource === "semantic") evictedSemantic++;
+          else evictedEpisodic++;
+        } catch {
+          continue;
         }
-        if (!primaryDelete || !scoreDelete) {
-          failed++;
-        }
+      }
+
+      // Retention eviction is a structural delete path that removes
+      // memories, retention scores, and access logs, so it needs to
+      // emit an audit record per the repo's audit-coverage policy (see
+      // mem::governance-delete for the reference pattern). Batched,
+      // one record per invocation — per-candidate audits would flood
+      // the audit log during normal eviction sweeps.
+      if (evicted > 0) {
+        await recordAudit(kv, "delete", "mem::retention-evict", evictedIds, {
+          threshold,
+          evicted,
+          evictedEpisodic,
+          evictedSemantic,
+          reason: "retention score below threshold",
+        });
       }
 
       ctx.logger.info("Retention-based eviction complete", {
         evicted,
-        failed,
+        evictedEpisodic,
+        evictedSemantic,
         threshold,
       });
 
-      return { success: failed === 0, evicted, failed };
+      return { success: true, evicted, evictedEpisodic, evictedSemantic };
     },
   );
 }
