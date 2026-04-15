@@ -26,6 +26,41 @@ const DEFAULT_DECAY: DecayConfig = {
   },
 };
 
+function resolveDecayConfig(
+  input?: Partial<DecayConfig>,
+): { config: DecayConfig } | { error: string } {
+  const tierThresholds = {
+    ...DEFAULT_DECAY.tierThresholds,
+    ...(input?.tierThresholds ?? {}),
+  };
+  const config: DecayConfig = {
+    lambda:
+      typeof input?.lambda === "number" ? input.lambda : DEFAULT_DECAY.lambda,
+    sigma: typeof input?.sigma === "number" ? input.sigma : DEFAULT_DECAY.sigma,
+    tierThresholds,
+  };
+
+  if (!Number.isFinite(config.lambda) || config.lambda <= 0) {
+    return { error: "config.lambda must be a positive number" };
+  }
+  if (!Number.isFinite(config.sigma) || config.sigma < 0) {
+    return { error: "config.sigma must be a non-negative number" };
+  }
+  const { hot, warm, cold } = config.tierThresholds;
+  if (![hot, warm, cold].every((v) => Number.isFinite(v))) {
+    return {
+      error: "config.tierThresholds.hot/warm/cold must be finite numbers",
+    };
+  }
+  if (!(hot >= warm && warm >= cold && cold >= 0)) {
+    return {
+      error:
+        "config.tierThresholds must satisfy hot >= warm >= cold >= 0",
+    };
+  }
+  return { config };
+}
+
 function computeReinforcementBoost(
   accessTimestamps: number[],
   sigma: number,
@@ -88,15 +123,14 @@ export function registerRetentionFunctions(
   sdk: ISdk,
   kv: StateKV,
 ): void {
-  sdk.registerFunction(
-    {
-      id: "mem::retention-score",
-      description:
-        "Compute retention scores for all memories using time-frequency decay",
-    },
+  sdk.registerFunction("mem::retention-score",
     async (data: { config?: Partial<DecayConfig> }) => {
       const ctx = getContext();
-      const config = { ...DEFAULT_DECAY, ...data.config };
+      const resolved = resolveDecayConfig(data?.config);
+      if ("error" in resolved) {
+        return { success: false, error: resolved.error };
+      }
+      const { config } = resolved;
 
       const [memories, semanticMems, allLogs] = await Promise.all([
         kv.list<Memory>(KV.memories),
@@ -255,20 +289,22 @@ export function registerRetentionFunctions(
     },
   );
 
-  sdk.registerFunction(
-    {
-      id: "mem::retention-evict",
-      description:
-        "Evict memories below retention threshold (tiered storage)",
-    },
-    async (data: {
+  sdk.registerFunction("mem::retention-evict", 
+    async (data?: {
       threshold?: number;
       dryRun?: boolean;
       maxEvict?: number;
     }) => {
       const ctx = getContext();
-      const threshold = data.threshold ?? DEFAULT_DECAY.tierThresholds.cold;
-      const maxEvict = data.maxEvict ?? 50;
+      const threshold =
+        typeof data?.threshold === "number" && Number.isFinite(data.threshold)
+          ? data.threshold
+          : DEFAULT_DECAY.tierThresholds.cold;
+      const maxEvictRaw =
+        typeof data?.maxEvict === "number" && Number.isInteger(data.maxEvict)
+          ? data.maxEvict
+          : 50;
+      const maxEvict = Math.min(1000, Math.max(0, maxEvictRaw));
 
       const allScores = await kv.list<RetentionScore>(KV.retentionScores);
       const candidates = allScores
@@ -276,7 +312,7 @@ export function registerRetentionFunctions(
         .sort((a, b) => a.score - b.score)
         .slice(0, maxEvict);
 
-      if (data.dryRun) {
+      if (data?.dryRun) {
         return {
           success: true,
           dryRun: true,

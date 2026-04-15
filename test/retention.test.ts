@@ -49,12 +49,18 @@ function mockKV(
 function mockSdk() {
   const functions = new Map<string, Function>();
   return {
-    registerFunction: (opts: { id: string }, fn: Function) => {
-      functions.set(opts.id, fn);
+    registerFunction: (idOrOpts: string, fn: Function) => {
+      if (typeof idOrOpts !== "string") {
+        throw new Error("registerFunction expects string function id");
+      }
+      functions.set(idOrOpts, fn);
     },
-    trigger: async (id: string, data: unknown) => {
-      const fn = functions.get(id);
-      if (fn) return fn(data);
+    trigger: async (input: { function_id: string; payload: unknown }) => {
+      if (typeof input === "string") {
+        throw new Error("legacy trigger signature is not supported in tests");
+      }
+      const fn = functions.get(input.function_id);
+      if (fn) return fn(input.payload);
       return null;
     },
   };
@@ -126,7 +132,10 @@ describe("RetentionScoring", () => {
     const kv = mockKV(memories);
     registerRetentionFunctions(sdk as never, kv as never);
 
-    const result = (await sdk.trigger("mem::retention-score", {})) as {
+    const result = (await sdk.trigger({
+      function_id: "mem::retention-score",
+      payload: {},
+    })) as {
       success: boolean;
       total: number;
       tiers: any;
@@ -161,7 +170,10 @@ describe("RetentionScoring", () => {
     const kv = mockKV(memories);
     registerRetentionFunctions(sdk as never, kv as never);
 
-    const result = (await sdk.trigger("mem::retention-score", {})) as any;
+    const result = (await sdk.trigger({
+      function_id: "mem::retention-score",
+      payload: {},
+    })) as any;
 
     const archScore = result.scores.find(
       (s: any) => s.memoryId === "mem_arch",
@@ -189,7 +201,10 @@ describe("RetentionScoring", () => {
     const kv = mockKV(memories);
     registerRetentionFunctions(sdk as never, kv as never);
 
-    const result = (await sdk.trigger("mem::retention-score", {})) as any;
+    const result = (await sdk.trigger({
+      function_id: "mem::retention-score",
+      payload: {},
+    })) as any;
     expect(result.tiers.hot + result.tiers.warm + result.tiers.cold + result.tiers.evictable).toBe(4);
   });
 
@@ -207,11 +222,14 @@ describe("RetentionScoring", () => {
     const kv = mockKV(memories);
     registerRetentionFunctions(sdk as never, kv as never);
 
-    await sdk.trigger("mem::retention-score", {});
+    await sdk.trigger({ function_id: "mem::retention-score", payload: {} });
 
-    const dryResult = (await sdk.trigger("mem::retention-evict", {
-      threshold: 0.5,
-      dryRun: true,
+    const dryResult = (await sdk.trigger({
+      function_id: "mem::retention-evict",
+      payload: {
+        threshold: 0.5,
+        dryRun: true,
+      },
     })) as any;
 
     expect(dryResult.dryRun).toBe(true);
@@ -235,7 +253,10 @@ describe("RetentionScoring", () => {
     const kv = mockKV([], semanticMems);
     registerRetentionFunctions(sdk as never, kv as never);
 
-    const result = (await sdk.trigger("mem::retention-score", {})) as any;
+    const result = (await sdk.trigger({
+      function_id: "mem::retention-score",
+      payload: {},
+    })) as any;
 
     expect(result.total).toBe(2);
     const sem1 = result.scores.find((s: any) => s.memoryId === "sem_1");
@@ -255,7 +276,10 @@ describe("RetentionScoring", () => {
     );
     registerRetentionFunctions(sdk as never, kv as never);
 
-    const result = (await sdk.trigger("mem::retention-score", {})) as any;
+    const result = (await sdk.trigger({
+      function_id: "mem::retention-score",
+      payload: {},
+    })) as any;
     const ep = result.scores.find((s: any) => s.memoryId === "mem_ep");
     const sem = result.scores.find((s: any) => s.memoryId === "sem_sem");
     expect(ep.source).toBe("episodic");
@@ -289,9 +313,10 @@ describe("RetentionScoring", () => {
     );
     registerRetentionFunctions(sdk as never, kv as never);
 
-    await sdk.trigger("mem::retention-score", {});
-    const result = (await sdk.trigger("mem::retention-evict", {
-      threshold: 0.9,
+    await sdk.trigger({ function_id: "mem::retention-score", payload: {} });
+    const result = (await sdk.trigger({
+      function_id: "mem::retention-evict",
+      payload: { threshold: 0.9 },
     })) as any;
 
     expect(result.evicted).toBe(2);
@@ -320,8 +345,11 @@ describe("RetentionScoring", () => {
     );
     registerRetentionFunctions(sdk as never, kv as never);
 
-    await sdk.trigger("mem::retention-score", {});
-    await sdk.trigger("mem::retention-evict", { threshold: 0.9 });
+    await sdk.trigger({ function_id: "mem::retention-score", payload: {} });
+    await sdk.trigger({
+      function_id: "mem::retention-evict",
+      payload: { threshold: 0.9 },
+    });
 
     // Retention-score ALSO emits an audit row (one per rescore, also
     // required by the repo audit-coverage policy), so filter the audit
@@ -358,8 +386,11 @@ describe("RetentionScoring", () => {
     const kv = mockKV([makeMemory("mem_keep", "architecture", 1)]);
     registerRetentionFunctions(sdk as never, kv as never);
 
-    await sdk.trigger("mem::retention-score", {});
-    await sdk.trigger("mem::retention-evict", { threshold: 0.0001 });
+    await sdk.trigger({ function_id: "mem::retention-score", payload: {} });
+    await sdk.trigger({
+      function_id: "mem::retention-evict",
+      payload: { threshold: 0.0001 },
+    });
 
     const allEntries = await kv.list<{ functionId: string }>("mem:audit");
     const evictEntries = allEntries.filter(
@@ -380,7 +411,7 @@ describe("RetentionScoring", () => {
     );
     registerRetentionFunctions(sdk as never, kv as never);
 
-    await sdk.trigger("mem::retention-score", {});
+    await sdk.trigger({ function_id: "mem::retention-score", payload: {} });
 
     const allEntries = await kv.list<{
       operation: string;
@@ -429,8 +460,9 @@ describe("RetentionScoring", () => {
       accessCount: 0,
     });
 
-    const result = (await sdk.trigger("mem::retention-evict", {
-      threshold: 0.5,
+    const result = (await sdk.trigger({
+      function_id: "mem::retention-evict",
+      payload: { threshold: 0.5 },
     })) as any;
     expect(result.evicted).toBe(1);
     expect(result.evictedSemantic).toBe(1);
@@ -467,8 +499,9 @@ describe("RetentionScoring", () => {
       accessCount: 0,
     });
 
-    const result = (await sdk.trigger("mem::retention-evict", {
-      threshold: 0.5,
+    const result = (await sdk.trigger({
+      function_id: "mem::retention-evict",
+      payload: { threshold: 0.5 },
     })) as any;
     expect(result.evicted).toBe(1);
     expect(result.evictedEpisodic).toBe(1);

@@ -4,8 +4,7 @@ import { KV, generateId } from "../state/schema.js";
 import type { Facet } from "../types.js";
 
 export function registerFacetsFunction(sdk: ISdk, kv: StateKV): void {
-  sdk.registerFunction(
-    { id: "mem::facet-tag" },
+  sdk.registerFunction("mem::facet-tag", 
     async (data: {
       targetId: string;
       targetType: string;
@@ -68,8 +67,7 @@ export function registerFacetsFunction(sdk: ISdk, kv: StateKV): void {
     },
   );
 
-  sdk.registerFunction(
-    { id: "mem::facet-untag" },
+  sdk.registerFunction("mem::facet-untag", 
     async (data: {
       targetId: string;
       dimension: string;
@@ -101,8 +99,7 @@ export function registerFacetsFunction(sdk: ISdk, kv: StateKV): void {
     },
   );
 
-  sdk.registerFunction(
-    { id: "mem::facet-query" },
+  sdk.registerFunction("mem::facet-query", 
     async (data: {
       matchAll?: string[];
       matchAny?: string[];
@@ -168,8 +165,7 @@ export function registerFacetsFunction(sdk: ISdk, kv: StateKV): void {
     },
   );
 
-  sdk.registerFunction(
-    { id: "mem::facet-get" },
+  sdk.registerFunction("mem::facet-get", 
     async (data: { targetId: string }) => {
       if (!data.targetId) {
         return { success: false, error: "targetId is required" };
@@ -197,8 +193,7 @@ export function registerFacetsFunction(sdk: ISdk, kv: StateKV): void {
     },
   );
 
-  sdk.registerFunction(
-    { id: "mem::facet-stats" },
+  sdk.registerFunction("mem::facet-stats", 
     async (data: { targetType?: string }) => {
       const all = await kv.list<Facet>(KV.facets);
       const filtered = data.targetType
@@ -227,8 +222,7 @@ export function registerFacetsFunction(sdk: ISdk, kv: StateKV): void {
     },
   );
 
-  sdk.registerFunction(
-    { id: "mem::facet-dimensions" },
+  sdk.registerFunction("mem::facet-dimensions", 
     async () => {
       const all = await kv.list<Facet>(KV.facets);
 

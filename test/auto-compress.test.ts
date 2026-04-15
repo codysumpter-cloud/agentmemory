@@ -1,11 +1,15 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import type { RawObservation } from "../src/types.js";
 
-vi.mock("iii-sdk", () => ({
-  getContext: () => ({
-    logger: { info: () => {}, warn: () => {}, error: () => {} },
-  }),
-}));
+vi.mock("iii-sdk", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("iii-sdk")>();
+  return {
+    ...actual,
+    getContext: () => ({
+      logger: { info: () => {}, warn: () => {}, error: () => {} },
+    }),
+  };
+});
 
 function mockKV() {
   const store = new Map<string, Map<string, unknown>>();
@@ -34,16 +38,28 @@ function mockSdk() {
   return {
     fns,
     triggered,
-    registerFunction: (opts: { id: string }, fn: Function) => {
-      fns.set(opts.id, fn);
+    registerFunction: (
+      idOrOpts: string | { id: string },
+      fn: Function,
+      _options?: Record<string, unknown>,
+    ) => {
+      const id = typeof idOrOpts === "string" ? idOrOpts : idOrOpts.id;
+      fns.set(id, fn);
     },
-    trigger: async (id: string, data: unknown) => {
+    trigger: async (
+      idOrInput:
+        | string
+        | { function_id: string; payload: unknown; action?: unknown },
+      data?: unknown,
+    ) => {
+      const id =
+        typeof idOrInput === "string" ? idOrInput : idOrInput.function_id;
+      const payload =
+        typeof idOrInput === "string" ? data : idOrInput.payload;
+      triggered.push({ id, data: payload });
       const fn = fns.get(id);
-      if (fn) return fn(data);
+      if (fn) return fn(payload);
       return null;
-    },
-    triggerVoid: (id: string, data: unknown) => {
-      triggered.push({ id, data });
     },
   };
 }

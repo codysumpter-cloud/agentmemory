@@ -3,12 +3,11 @@ import { getContext } from "iii-sdk";
 import type { Memory, GovernanceFilter, AuditEntry } from "../types.js";
 import { KV } from "../state/schema.js";
 import type { StateKV } from "../state/kv.js";
-import { recordAudit, queryAudit } from "./audit.js";
+import { recordAudit, safeAudit, queryAudit } from "./audit.js";
 import { deleteAccessLog } from "./access-tracker.js";
 
 export function registerGovernanceFunction(sdk: ISdk, kv: StateKV): void {
-  sdk.registerFunction(
-    { id: "mem::governance-delete" },
+  sdk.registerFunction("mem::governance-delete", 
     async (data: { memoryIds: string[]; reason?: string }) => {
       const ctx = getContext();
       if (
@@ -48,8 +47,7 @@ export function registerGovernanceFunction(sdk: ISdk, kv: StateKV): void {
     },
   );
 
-  sdk.registerFunction(
-    { id: "mem::governance-bulk" },
+  sdk.registerFunction("mem::governance-bulk", 
     async (data: GovernanceFilter & { dryRun?: boolean }) => {
       const ctx = getContext();
 
@@ -102,26 +100,64 @@ export function registerGovernanceFunction(sdk: ISdk, kv: StateKV): void {
         };
       }
 
-      for (const mem of candidates) {
-        await kv.delete(KV.memories, mem.id);
-        await deleteAccessLog(kv, mem.id);
+      const BATCH_SIZE = 50;
+      const successfulIds: string[] = [];
+      const failures: Array<{ id: string; error: string }> = [];
+      for (let i = 0; i < candidates.length; i += BATCH_SIZE) {
+        const batch = candidates.slice(i, i + BATCH_SIZE);
+        const results = await Promise.allSettled(
+          batch.map(async (mem) => {
+            await kv.delete(KV.memories, mem.id);
+            await deleteAccessLog(kv, mem.id);
+          }),
+        );
+        results.forEach((result, j) => {
+          const mem = batch[j];
+          if (result.status === "fulfilled") {
+            successfulIds.push(mem.id);
+          } else {
+            ctx.logger.warn("Governance bulk delete failed", {
+              memoryId: mem.id,
+              error:
+                result.reason instanceof Error
+                  ? result.reason.message
+                  : String(result.reason),
+            });
+            failures.push({
+              id: mem.id,
+              error: "delete_failed",
+            });
+          }
+        });
       }
 
-      await recordAudit(
+      await safeAudit(
         kv,
         "delete",
         "mem::governance-bulk",
-        candidates.map((m) => m.id),
-        { filter: data, deleted: candidates.length },
+        successfulIds,
+        {
+          filter: data,
+          deleted: successfulIds.length,
+          failed: failures.length,
+          failures: failures.length > 0 ? failures : undefined,
+        },
       );
 
-      ctx.logger.info("Governance bulk delete", { deleted: candidates.length });
-      return { success: true, deleted: candidates.length };
+      ctx.logger.info("Governance bulk delete", {
+        deleted: successfulIds.length,
+        failed: failures.length,
+      });
+      return {
+        success: failures.length === 0,
+        deleted: successfulIds.length,
+        failed: failures.length,
+        failures: failures.length > 0 ? failures : undefined,
+      };
     },
   );
 
-  sdk.registerFunction(
-    { id: "mem::audit-query" },
+  sdk.registerFunction("mem::audit-query", 
     async (data?: {
       operation?: AuditEntry["operation"];
       dateFrom?: string;

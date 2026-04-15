@@ -3,13 +3,13 @@ import type { StateKV } from "../state/kv.js";
 import { KV, generateId } from "../state/schema.js";
 import { withKeyedLock } from "../state/keyed-mutex.js";
 import type { Action, Lease } from "../types.js";
+import { recordAudit } from "./audit.js";
 
 const DEFAULT_LEASE_TTL_MS = 10 * 60 * 1000;
 const MAX_LEASE_TTL_MS = 60 * 60 * 1000;
 
 export function registerLeasesFunction(sdk: ISdk, kv: StateKV): void {
-  sdk.registerFunction(
-    { id: "mem::lease-acquire" },
+  sdk.registerFunction("mem::lease-acquire", 
     async (data: { actionId: string; agentId: string; ttlMs?: number }) => {
       if (!data.actionId || !data.agentId) {
         return { success: false, error: "actionId and agentId are required" };
@@ -68,19 +68,28 @@ export function registerLeasesFunction(sdk: ISdk, kv: StateKV): void {
         };
 
         await kv.set(KV.leases, lease.id, lease);
+        await recordAudit(kv, "lease_acquire", "mem::lease-acquire", [lease.id], {
+          actionId: data.actionId,
+          agentId: data.agentId,
+          expiresAt: lease.expiresAt,
+        });
 
+        const before = { ...action };
         action.status = "active";
         action.assignedTo = data.agentId;
         action.updatedAt = now.toISOString();
         await kv.set(KV.actions, action.id, action);
+        await recordAudit(kv, "action_update", "mem::lease-acquire", [action.id], {
+          before,
+          after: action,
+        });
 
         return { success: true, lease, renewed: false };
       });
     },
   );
 
-  sdk.registerFunction(
-    { id: "mem::lease-release" },
+  sdk.registerFunction("mem::lease-release", 
     async (data: { actionId: string; agentId: string; result?: string }) => {
       if (!data.actionId || !data.agentId) {
         return { success: false, error: "actionId and agentId are required" };
@@ -102,9 +111,15 @@ export function registerLeasesFunction(sdk: ISdk, kv: StateKV): void {
 
         activeLease.status = "released";
         await kv.set(KV.leases, activeLease.id, activeLease);
+        await recordAudit(kv, "lease_release", "mem::lease-release", [activeLease.id], {
+          actionId: data.actionId,
+          agentId: data.agentId,
+          status: "released",
+        });
 
         const action = await kv.get<Action>(KV.actions, data.actionId);
         if (action && action.status === "active" && action.assignedTo === data.agentId) {
+          const before = { ...action };
           if (data.result) {
             action.status = "done";
             action.result = data.result;
@@ -114,6 +129,11 @@ export function registerLeasesFunction(sdk: ISdk, kv: StateKV): void {
           action.assignedTo = undefined;
           action.updatedAt = new Date().toISOString();
           await kv.set(KV.actions, action.id, action);
+          await recordAudit(kv, "action_update", "mem::lease-release", [action.id], {
+            before,
+            after: action,
+            agentId: data.agentId,
+          });
         }
 
         return { success: true, released: true };
@@ -121,8 +141,7 @@ export function registerLeasesFunction(sdk: ISdk, kv: StateKV): void {
     },
   );
 
-  sdk.registerFunction(
-    { id: "mem::lease-renew" },
+  sdk.registerFunction("mem::lease-renew", 
     async (data: { actionId: string; agentId: string; ttlMs?: number }) => {
       if (!data.actionId || !data.agentId) {
         return { success: false, error: "actionId and agentId are required" };
@@ -149,17 +168,23 @@ export function registerLeasesFunction(sdk: ISdk, kv: StateKV): void {
 
         const now = new Date();
         const base = Math.max(now.getTime(), new Date(activeLease.expiresAt).getTime());
+        const beforeLease = { ...activeLease };
         activeLease.expiresAt = new Date(base + ttl).toISOString();
         activeLease.renewedAt = now.toISOString();
         await kv.set(KV.leases, activeLease.id, activeLease);
+        await recordAudit(kv, "lease_renew", "mem::lease-renew", [activeLease.id], {
+          actionId: data.actionId,
+          agentId: data.agentId,
+          before: beforeLease,
+          after: activeLease,
+        });
 
         return { success: true, lease: activeLease };
       });
     },
   );
 
-  sdk.registerFunction(
-    { id: "mem::lease-cleanup" },
+  sdk.registerFunction("mem::lease-cleanup", 
     async () => {
       const leases = await kv.list<Lease>(KV.leases);
       const now = Date.now();
@@ -183,6 +208,11 @@ export function registerLeasesFunction(sdk: ISdk, kv: StateKV): void {
               }
               currentLease.status = "expired";
               await kv.set(KV.leases, currentLease.id, currentLease);
+              await recordAudit(kv, "lease_release", "mem::lease-cleanup", [currentLease.id], {
+                action: "expire",
+                actionId: currentLease.actionId,
+                agentId: currentLease.agentId,
+              });
 
               const action = await kv.get<Action>(KV.actions, currentLease.actionId);
               const otherActiveLease = (await kv.list<Lease>(KV.leases)).some(
@@ -202,6 +232,11 @@ export function registerLeasesFunction(sdk: ISdk, kv: StateKV): void {
                 action.assignedTo = undefined;
                 action.updatedAt = new Date().toISOString();
                 await kv.set(KV.actions, action.id, action);
+                await recordAudit(kv, "action_update", "mem::lease-cleanup", [action.id], {
+                  action: "status-change",
+                  newStatus: action.status,
+                  actionId: action.id,
+                });
               }
               return true;
             },

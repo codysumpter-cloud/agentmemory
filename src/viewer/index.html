@@ -809,6 +809,7 @@
     var wsProto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
     var wsPort = params.get('wsPort') || String(parseInt(viewerPort) - 1);
     var WS_URL = wsProto + '//' + window.location.hostname + ':' + wsPort;
+    var WS_DIRECT_URL = wsProto + '//' + window.location.hostname + ':' + wsPort + '/stream/mem-live/viewer';
 
     var dateEl = document.getElementById('dateline');
     if (dateEl) dateEl.textContent = new Date().toLocaleDateString('en-US', { weekday: 'short', year: 'numeric', month: 'short', day: 'numeric' });
@@ -2789,33 +2790,61 @@
     var wsReconnectTimer = null;
     var wsRetries = 0;
     var WS_MAX_RETRIES = 10;
+    var directFailed = false;
+    var directFailures = 0;
+    var DIRECT_FAILURE_THRESHOLD = 2;
 
     function connectWs() {
       if (wsRetries >= WS_MAX_RETRIES) return;
+      var useDirect = !directFailed;
+      var ws;
       try {
-        state.ws = new WebSocket(WS_URL);
-        state.ws.onopen = function() {
+        ws = new WebSocket(useDirect ? WS_DIRECT_URL : WS_URL);
+        ws.__direct = useDirect;
+      } catch (_) {
+        ws = new WebSocket(WS_URL);
+        ws.__direct = false;
+      }
+      try {
+        ws.onopen = function() {
+          if (state.ws !== ws) return;
           wsRetries = 0;
-          state.ws.send(JSON.stringify({
-            type: 'join',
-            data: {
-              subscriptionId: 'viewer-' + Date.now(),
-              streamName: 'mem-live',
-              groupId: 'viewer'
-            }
-          }));
+          if (ws.__direct) {
+            directFailures = 0;
+            directFailed = false;
+          }
+          if (!ws.__direct) {
+            ws.send(JSON.stringify({
+              type: 'join',
+              data: {
+                subscriptionId: 'viewer-' + Date.now(),
+                streamName: 'mem-live',
+                groupId: 'viewer'
+              }
+            }));
+          }
           document.getElementById('ws-status').textContent = 'live';
           document.getElementById('ws-status').className = 'ws-status connected';
         };
-        state.ws.onmessage = function(e) {
+        ws.onmessage = function(e) {
+          if (state.ws !== ws) return;
           try {
             var msg = JSON.parse(e.data);
             if (msg.type === 'stream' && msg.event) {
               handleStreamEvent(msg);
+            } else if (msg.event_type && msg.data) {
+              handleStreamEvent({ event: { type: 'create', data: msg.data, event_type: msg.event_type } });
             }
           } catch {}
         };
-        state.ws.onclose = function() {
+        ws.onclose = function() {
+          if (state.ws !== ws) return;
+          if (ws.__direct) {
+            directFailures += 1;
+            if (directFailures >= DIRECT_FAILURE_THRESHOLD) {
+              directFailed = true;
+            }
+          }
           document.getElementById('ws-status').textContent = 'reconnecting...';
           document.getElementById('ws-status').className = 'ws-status disconnected';
           wsRetries++;
@@ -2825,7 +2854,11 @@
             document.getElementById('ws-status').textContent = 'disconnected';
           }
         };
-        state.ws.onerror = function() { state.ws.close(); };
+        ws.onerror = function() {
+          if (state.ws !== ws) return;
+          try { ws.close(); } catch {}
+        };
+        state.ws = ws;
       } catch {
         wsRetries++;
         if (wsRetries < WS_MAX_RETRIES) {
@@ -2834,20 +2867,36 @@
       }
     }
 
+    function looksLikeObservation(obj) {
+      return !!(obj && typeof obj === 'object' && obj.id && obj.timestamp);
+    }
+
     function handleStreamEvent(msg) {
       var evt = msg.event;
+      var observation;
+      if (!evt) return;
+      if (evt.event_type && evt.event_type !== 'observation' && evt.event_type !== 'create' && evt.event_type !== 'update') {
+        return;
+      }
+      if (evt.type === 'event' && evt.data) {
+        observation = evt.data.observation || evt.data;
+        if (looksLikeObservation(observation)) {
+          routeWsMessage({ observation: observation });
+        }
+        return;
+      }
       if ((evt.type === 'create' || evt.type === 'update') && evt.data) {
         var payload = evt.data;
-        var observation = payload.observation || payload;
-        if (observation) {
+        observation = payload.observation || payload;
+        if (looksLikeObservation(observation)) {
           routeWsMessage({ observation: observation });
         }
       } else if (evt.type === 'sync') {
         var items = Array.isArray(evt.data) ? evt.data : [];
         items.forEach(function(item) {
           var payload = item.data || item;
-          var observation = payload.observation || payload;
-          if (observation) {
+          observation = payload.observation || payload;
+          if (looksLikeObservation(observation)) {
             routeWsMessage({ observation: observation });
           }
         });

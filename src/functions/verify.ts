@@ -8,8 +8,7 @@ import type {
 } from "../types.js";
 
 export function registerVerifyFunction(sdk: ISdk, kv: StateKV): void {
-  sdk.registerFunction(
-    { id: "mem::verify" },
+  sdk.registerFunction("mem::verify", 
     async (data: { id: string }) => {
       if (!data.id || typeof data.id !== "string") {
         return { success: false, error: "id is required" };

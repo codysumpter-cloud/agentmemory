@@ -28,11 +28,7 @@ export function registerContextFunction(
   kv: StateKV,
   tokenBudget: number,
 ): void {
-  sdk.registerFunction(
-    {
-      id: "mem::context",
-      description: "Generate context for session injection",
-    },
+  sdk.registerFunction("mem::context", 
     async (data: { sessionId: string; project: string; budget?: number }) => {
       const ctx = getContext();
       const budget = data.budget || tokenBudget;

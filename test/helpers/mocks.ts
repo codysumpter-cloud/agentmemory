@@ -26,15 +26,28 @@ export function mockKV() {
 export function mockSdk() {
   const functions = new Map<string, Handler>();
   return {
-    registerFunction: (opts: { id: string }, handler: Handler) => {
-      functions.set(opts.id, handler);
+    registerFunction: (
+      idOrOpts: string | { id: string },
+      handler: Handler,
+      _options?: Record<string, unknown>,
+    ) => {
+      const id = typeof idOrOpts === "string" ? idOrOpts : idOrOpts.id;
+      functions.set(id, handler);
     },
     registerTrigger: vi.fn(),
-    trigger: async (id: string, data: unknown) => {
+    trigger: async (
+      idOrInput:
+        | string
+        | { function_id: string; payload: unknown; action?: unknown },
+      data?: unknown,
+    ) => {
+      const id =
+        typeof idOrInput === "string" ? idOrInput : idOrInput.function_id;
+      const payload =
+        typeof idOrInput === "string" ? data : (idOrInput.payload as unknown);
       const fn = functions.get(id);
       if (!fn) throw new Error(`No function: ${id}`);
-      return fn(data);
+      return fn(payload);
     },
-    triggerVoid: vi.fn(),
   };
 }

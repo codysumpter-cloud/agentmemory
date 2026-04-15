@@ -38,14 +38,17 @@ function mockKV() {
 function mockSdk() {
   const functions = new Map<string, Function>();
   return {
-    registerFunction: (opts: { id: string }, handler: Function) => {
-      functions.set(opts.id, handler);
+    registerFunction: (idOrOpts: string | { id: string }, handler: Function) => {
+      const id = typeof idOrOpts === "string" ? idOrOpts : idOrOpts.id;
+      functions.set(id, handler);
     },
     registerTrigger: () => {},
-    trigger: async (id: string, data: unknown) => {
+    trigger: async (idOrInput: string | { function_id: string; payload: unknown }, data?: unknown) => {
+      const id = typeof idOrInput === "string" ? idOrInput : idOrInput.function_id;
+      const payload = typeof idOrInput === "string" ? data : idOrInput.payload;
       const fn = functions.get(id);
       if (!fn) throw new Error(`No function: ${id}`);
-      return fn(data);
+      return fn(payload);
     },
   };
 }

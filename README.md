@@ -286,6 +286,8 @@ npx @agentmemory/agentmemory
 
 <h2 id="quick-start"><picture><source media="(prefers-color-scheme: dark)" srcset="assets/tags/light/section-quickstart.svg"><img src="assets/tags/section-quickstart.svg" alt="Quick Start" height="32" /></picture></h2>
 
+Compatibility: this release targets stable `iii-sdk` `^0.11.0` and iii-engine v0.11.x.
+
 ### Try it in 30 seconds
 
 ```bash
@@ -299,6 +301,18 @@ npx @agentmemory/agentmemory demo
 `demo` seeds 3 realistic sessions (JWT auth, N+1 query fix, rate limiting) and runs semantic searches against them. You'll see it find "N+1 query fix" when you search "database performance optimization" — keyword matching can't do that.
 
 Open `http://localhost:3113` to watch the memory build live.
+
+### Upgrade / Maintenance
+
+Use the maintenance command when you intentionally want to update your local runtime:
+
+```bash
+npx @agentmemory/agentmemory upgrade
+```
+
+Warning: this command mutates the current workspace/runtime. It can update JavaScript dependencies, may run `cargo install iii-engine --force`, and may pull Docker images.
+
+Implementation details live in `src/cli.ts` (see `runUpgrade` around the `src/cli.ts:544-595` region).
 
 ### Claude Code (one block, paste it)
 

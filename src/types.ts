@@ -468,6 +468,8 @@ export interface AuditEntry {
     | "signal_send"
     | "checkpoint_resolve"
     | "mesh_sync"
+    | "relation_create"
+    | "relation_update"
     | "sentinel_create"
     | "sentinel_trigger"
     | "sketch_create"
@@ -487,7 +489,8 @@ export interface AuditEntry {
     | "skill_extract"
     | "core_add"
     | "core_remove"
-    | "auto_page";
+    | "auto_page"
+    | "relation_create";
   userId?: string;
   functionId: string;
   targetIds: string[];
@@ -796,7 +799,7 @@ export interface RetentionScore {
   // Which KV scope this row came from. Needed by mem::retention-evict
   // so the delete loop routes to KV.memories or KV.semantic correctly.
   // Missing on pre-0.8.10 rows — callers must treat `undefined` as
-  // "unknown, assume episodic" for backwards-compat. See #124.
+  // "unknown" and probe both scopes for backwards-compat. See #124.
   source?: "episodic" | "semantic";
   score: number;
   salience: number;

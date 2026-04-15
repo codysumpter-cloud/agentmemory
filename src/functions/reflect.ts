@@ -165,8 +165,7 @@ export function registerReflectFunctions(
   kv: StateKV,
   provider: MemoryProvider,
 ): void {
-  sdk.registerFunction(
-    { id: "mem::reflect" },
+  sdk.registerFunction("mem::reflect", 
     async (data: { maxClusters?: number; project?: string }) => {
       const maxClusters = Math.min(data?.maxClusters ?? 10, 20);
       const maxInsightsPerCluster = 5;
@@ -335,8 +334,7 @@ export function registerReflectFunctions(
     },
   );
 
-  sdk.registerFunction(
-    { id: "mem::insight-list" },
+  sdk.registerFunction("mem::insight-list", 
     async (data: {
       project?: string;
       minConfidence?: number;
@@ -360,8 +358,7 @@ export function registerReflectFunctions(
     },
   );
 
-  sdk.registerFunction(
-    { id: "mem::insight-search" },
+  sdk.registerFunction("mem::insight-search", 
     async (data: {
       query: string;
       project?: string;
@@ -425,8 +422,7 @@ export function registerReflectFunctions(
     },
   );
 
-  sdk.registerFunction(
-    { id: "mem::insight-decay-sweep" },
+  sdk.registerFunction("mem::insight-decay-sweep", 
     async () => {
       const items = await kv.list<Insight>(KV.insights);
       let decayed = 0;
@@ -467,6 +463,13 @@ export function registerReflectFunctions(
       }
 
       await Promise.all(dirty.map((i) => kv.set(KV.insights, i.id, i)));
+      await recordAudit(kv, "reflect", "mem::insight-decay-sweep", dirty.map((i) => i.id), {
+        event: "insight.decay",
+        decayed,
+        softDeleted,
+        total: items.length,
+        timestamp,
+      });
 
       return { success: true, decayed, softDeleted, total: items.length };
     },

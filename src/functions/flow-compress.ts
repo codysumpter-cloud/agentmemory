@@ -2,6 +2,7 @@ import type { ISdk } from "iii-sdk";
 import type { StateKV } from "../state/kv.js";
 import { KV, generateId } from "../state/schema.js";
 import type { Action, ActionEdge, RoutineRun, MemoryProvider } from "../types.js";
+import { recordAudit } from "./audit.js";
 
 const FLOW_COMPRESS_SYSTEM = `You are a workflow summarizer. Given a completed action chain, produce a concise summary capturing:
 1. The overall goal and outcome
@@ -23,8 +24,7 @@ export function registerFlowCompressFunction(
   kv: StateKV,
   provider: MemoryProvider,
 ): void {
-  sdk.registerFunction(
-    { id: "mem::flow-compress" },
+  sdk.registerFunction("mem::flow-compress", 
     async (data: { runId?: string; actionIds?: string[]; project?: string }) => {
       let actionsToCompress: Action[] = [];
 
@@ -81,11 +81,12 @@ export function registerFlowCompressFunction(
           prompt,
         );
         const summary = parseFlowSummary(response);
+        const ts = new Date().toISOString();
 
         const memory = {
           id: generateId("mem"),
-          createdAt: new Date().toISOString(),
-          updatedAt: new Date().toISOString(),
+          createdAt: ts,
+          updatedAt: ts,
           type: "workflow" as const,
           title: summary.goal || `Workflow: ${doneActions.length} actions`,
           content: formatSummary(summary),
@@ -103,6 +104,12 @@ export function registerFlowCompressFunction(
         };
 
         await kv.set(KV.memories, memory.id, memory);
+        await recordAudit(kv, "compress", "mem::flow-compress", [memory.id], {
+          action: "compress_flow",
+          flowCompressed: true,
+          actionCount: doneActions.length,
+          project: data.project,
+        });
 
         return {
           success: true,

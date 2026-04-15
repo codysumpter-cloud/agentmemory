@@ -41,7 +41,7 @@ export function registerHealthMonitor(
       const result = await sdk.trigger<
         unknown,
         { workers?: HealthSnapshot["workers"] }
-      >("engine::workers::list", {});
+      >({ function_id: "engine::workers::list", payload: {} });
       if (result?.workers) workers = result.workers;
     } catch {}
 

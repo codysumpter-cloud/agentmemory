@@ -3,6 +3,7 @@ import { getContext } from "iii-sdk";
 import type { Memory, CompressedObservation, Session } from "../types.js";
 import { KV, jaccardSimilarity } from "../state/schema.js";
 import { StateKV } from "../state/kv.js";
+import { recordAudit } from "./audit.js";
 import { deleteAccessLog } from "./access-tracker.js";
 
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
@@ -20,12 +21,7 @@ interface AutoForgetResult {
 }
 
 export function registerAutoForgetFunction(sdk: ISdk, kv: StateKV): void {
-  sdk.registerFunction(
-    {
-      id: "mem::auto-forget",
-      description:
-        "Auto-forget expired (TTL), contradictory, and low-value data",
-    },
+  sdk.registerFunction("mem::auto-forget", 
     async (data: { dryRun?: boolean }): Promise<AutoForgetResult> => {
       const ctx = getContext();
       const dryRun = data?.dryRun ?? false;
@@ -48,6 +44,11 @@ export function registerAutoForgetFunction(sdk: ISdk, kv: StateKV): void {
             deletedIds.add(mem.id);
             if (!dryRun) {
               await kv.delete(KV.memories, mem.id);
+              await recordAudit(kv, "delete", "mem::auto-forget", [mem.id], {
+                resource: "memory",
+                reason: "auto-forget TTL",
+                timestamp: mem.forgetAfter,
+              });
               await deleteAccessLog(kv, mem.id);
             }
           }
@@ -125,6 +126,12 @@ export function registerAutoForgetFunction(sdk: ISdk, kv: StateKV): void {
                     : memB;
                 older.isLatest = false;
                 await kv.set(KV.memories, older.id, older);
+                await recordAudit(kv, "forget", "mem::auto-forget", [older.id], {
+                  resource: "memory",
+                  reason: "auto-forget contradiction",
+                  olderId: older.id,
+                  similarity: sim,
+                });
               }
             }
           }
@@ -154,6 +161,12 @@ export function registerAutoForgetFunction(sdk: ISdk, kv: StateKV): void {
               await kv
                 .delete(KV.observations(sessions[i].id), obs.id)
                 .catch(() => {});
+              await recordAudit(kv, "delete", "mem::auto-forget", [obs.id], {
+                resource: "observation",
+                reason: "auto-forget low-value observation",
+                sessionId: sessions[i].id,
+                timestamp: obs.timestamp,
+              });
             }
           }
         }

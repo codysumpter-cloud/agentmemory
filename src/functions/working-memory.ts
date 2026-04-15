@@ -36,11 +36,7 @@ export function registerWorkingMemoryFunctions(
   kv: StateKV,
   tokenBudget: number,
 ): void {
-  sdk.registerFunction(
-    {
-      id: "mem::core-add",
-      description: "Add a fact to core memory (always included in context)",
-    },
+  sdk.registerFunction("mem::core-add", 
     async (data: {
       content: string;
       importance?: number;
@@ -73,11 +69,7 @@ export function registerWorkingMemoryFunctions(
     },
   );
 
-  sdk.registerFunction(
-    {
-      id: "mem::core-remove",
-      description: "Remove a fact from core memory",
-    },
+  sdk.registerFunction("mem::core-remove", 
     async (data: { id: string }) => {
       if (!data?.id) return { success: false, error: "id is required" };
       await kv.delete(CORE_SCOPE, data.id);
@@ -90,11 +82,7 @@ export function registerWorkingMemoryFunctions(
     },
   );
 
-  sdk.registerFunction(
-    {
-      id: "mem::core-list",
-      description: "List all core memory entries",
-    },
+  sdk.registerFunction("mem::core-list", 
     async () => {
       const entries = await kv.list<CoreMemoryEntry>(CORE_SCOPE);
       entries.sort((a, b) => b.importance - a.importance);
@@ -109,12 +97,7 @@ export function registerWorkingMemoryFunctions(
     },
   );
 
-  sdk.registerFunction(
-    {
-      id: "mem::working-context",
-      description:
-        "Build working context: core memory (pinned) + paged archival (by relevance/recency)",
-    },
+  sdk.registerFunction("mem::working-context", 
     async (data: { budget?: number }) => {
       const ctx = getContext();
       const budget = data.budget || tokenBudget;
@@ -209,12 +192,7 @@ export function registerWorkingMemoryFunctions(
     },
   );
 
-  sdk.registerFunction(
-    {
-      id: "mem::auto-page",
-      description:
-        "Automatically page low-value core memory entries to archival when over budget",
-    },
+  sdk.registerFunction("mem::auto-page", 
     async (data: { budget?: number }) => {
       const budget = data?.budget || tokenBudget;
       const coreBudget = Math.floor(budget * 0.3);

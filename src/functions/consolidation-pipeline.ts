@@ -47,8 +47,7 @@ export function registerConsolidationPipelineFunction(
   kv: StateKV,
   provider: MemoryProvider,
 ): void {
-  sdk.registerFunction(
-    { id: "mem::consolidate-pipeline" },
+  sdk.registerFunction("mem::consolidate-pipeline", 
     async (data?: { tier?: string; force?: boolean; project?: string }) => {
       if (!data?.force && !isConsolidationEnabled()) {
         return { success: false, skipped: true, reason: "CONSOLIDATION_ENABLED is not set to true" };
@@ -137,10 +136,10 @@ export function registerConsolidationPipelineFunction(
 
       if (tier === "all" || tier === "reflect") {
         try {
-          const reflectResult = await sdk.trigger("mem::reflect", {
+          const reflectResult = await sdk.trigger({ function_id: "mem::reflect", payload: {
             maxClusters: 10,
             project: data?.project,
-          });
+          } });
           results.reflect = reflectResult;
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);
@@ -251,7 +250,7 @@ export function registerConsolidationPipelineFunction(
 
       if (process.env["OBSIDIAN_AUTO_EXPORT"] === "true") {
         try {
-          await sdk.trigger("mem::obsidian-export", {});
+          await sdk.trigger({ function_id: "mem::obsidian-export", payload: {} });
           results.obsidianExport = { success: true };
         } catch (err) {
           const msg = err instanceof Error ? err.message : String(err);

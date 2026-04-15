@@ -19,8 +19,7 @@ function execAsync(
 }
 
 export function registerBranchAwareFunction(sdk: ISdk, kv: StateKV): void {
-  sdk.registerFunction(
-    { id: "mem::detect-worktree" },
+  sdk.registerFunction("mem::detect-worktree", 
     async (data: { cwd: string }) => {
       if (!data.cwd) {
         return { success: false, error: "cwd is required" };
@@ -77,8 +76,7 @@ export function registerBranchAwareFunction(sdk: ISdk, kv: StateKV): void {
     },
   );
 
-  sdk.registerFunction(
-    { id: "mem::list-worktrees" },
+  sdk.registerFunction("mem::list-worktrees", 
     async (data: { cwd: string }) => {
       if (!data.cwd) {
         return { success: false, error: "cwd is required" };
@@ -124,8 +122,7 @@ export function registerBranchAwareFunction(sdk: ISdk, kv: StateKV): void {
     },
   );
 
-  sdk.registerFunction(
-    { id: "mem::branch-sessions" },
+  sdk.registerFunction("mem::branch-sessions", 
     async (data: { cwd: string; branch?: string }) => {
       if (!data.cwd) {
         return { success: false, error: "cwd is required" };
@@ -139,7 +136,7 @@ export function registerBranchAwareFunction(sdk: ISdk, kv: StateKV): void {
           mainRepoRoot: string;
           branch: string | null;
         }
-      >("mem::detect-worktree", { cwd: data.cwd });
+      >({ function_id: "mem::detect-worktree", payload: { cwd: data.cwd } });
 
       const projectRoot = worktreeInfo.mainRepoRoot || data.cwd;
       const branch = data.branch || worktreeInfo.branch;

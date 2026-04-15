@@ -45,7 +45,7 @@ agentmemory is a persistent memory system for AI coding agents, built on iii-eng
 ### Function Registration
 ```typescript
 sdk.registerFunction(
-  { id: "mem::your-function" },
+  "mem::your-function",
   async (data: { ... }) => {
     // validate inputs
     // do work via kv.get/kv.set/kv.list
@@ -57,12 +57,15 @@ sdk.registerFunction(
 
 ### REST Endpoint Registration
 ```typescript
-sdk.registerFunction({ id: "api::your-endpoint" }, async (req: ApiRequest) => {
+sdk.registerFunction("api::your-endpoint", async (req: ApiRequest) => {
   const denied = checkAuth(req, secret);
   if (denied) return denied;
   const body = req.body as Record<string, unknown>;
   // validate + whitelist fields (never pass raw body to sdk.trigger)
-  const result = await sdk.trigger("mem::your-function", { ... });
+  const result = await sdk.trigger({
+    function_id: "mem::your-function",
+    payload: { ... },
+  });
   return { status_code: 200, body: result };
 });
 sdk.registerTrigger({
@@ -77,7 +80,10 @@ sdk.registerTrigger({
 case "memory_your_tool": {
   // validate args with typeof checks
   // parse CSV args: args.field.split(",").map(t => t.trim()).filter(Boolean)
-  const result = await sdk.trigger("mem::your-function", { ... });
+  const result = await sdk.trigger({
+    function_id: "mem::your-function",
+    payload: { ... },
+  });
   return { status_code: 200, body: { content: [{ type: "text", text: JSON.stringify(result, null, 2) }] } };
 }
 ```
@@ -98,16 +104,16 @@ Hook scripts in `src/hooks/` are standalone Node.js scripts (no iii-sdk import).
 
 ## Testing
 
-- All tests must pass before PR: `npm test` (613+ tests)
+- All tests must pass before PR: `npm test` (699+ tests)
 - Mock pattern: `vi.mock("iii-sdk")` with mock `sdk.trigger`, `kv.get/set/list`
 - Test files go in `test/` with `.test.ts` extension
 - Follow existing patterns in `test/crystallize.test.ts` for function tests
 
-## Current Stats (v0.7.0)
+## Current Stats (v0.8.9)
 
 - 43 MCP tools (8 visible by default, `AGENTMEMORY_TOOLS=all` for all)
 - 103 REST endpoints
 - 6 MCP resources, 3 MCP prompts
 - 12 hooks, 4 skills
 - 50+ iii functions
-- 627 tests
+- 699 tests

@@ -4,6 +4,13 @@ All notable changes to agentmemory will be documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Changed
+
+- Upgraded `iii-sdk` dependency from `^0.11.0-next.8` to stable `^0.11.0`.
+- Aligned stream send payloads with v0.11 wire format by using `type` for `stream::send` events in observe/compress/session-activity paths.
+- Updated migration guidance/examples and diagnostics plugin registration snippets to v0.11 function registration and trigger request shapes.
 ## [0.8.10] — 2026-04-15
 
 **Behavior change**: the PreToolUse and SessionStart hooks no longer run enrichment by default. SessionStart saves ~1-2K input tokens per session you start (the only path that was actually reaching the model, per the [Claude Code hook docs](https://code.claude.com/docs/en/hooks.md)). PreToolUse stops spawning a Node process and POSTing to `/agentmemory/enrich` on every file-touching tool call — a pure resource cleanup, not a token fix. If you were relying on either path, set `AGENTMEMORY_INJECT_CONTEXT=true` in `~/.agentmemory/.env` and restart. Observations are still captured via PostToolUse regardless.

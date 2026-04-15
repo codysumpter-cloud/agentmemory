@@ -13,8 +13,7 @@ interface Pattern {
 }
 
 export function registerPatternsFunction(sdk: ISdk, kv: StateKV): void {
-  sdk.registerFunction(
-    { id: "mem::patterns" },
+  sdk.registerFunction("mem::patterns", 
     async (data: { project?: string }) => {
       const ctx = getContext();
       const patterns: Pattern[] = [];
@@ -107,14 +106,13 @@ export function registerPatternsFunction(sdk: ISdk, kv: StateKV): void {
     },
   );
 
-  sdk.registerFunction(
-    { id: "mem::generate-rules" },
+  sdk.registerFunction("mem::generate-rules", 
     async (data: { project?: string }) => {
       const ctx = getContext();
       const result = await sdk.trigger<
         { project?: string },
         { patterns: Pattern[] }
-      >("mem::patterns", data);
+      >({ function_id: "mem::patterns", payload: data });
 
       const rules: string[] = [];
 

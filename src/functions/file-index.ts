@@ -3,6 +3,7 @@ import { getContext } from "iii-sdk";
 import type { CompressedObservation, Session } from "../types.js";
 import { KV } from "../state/schema.js";
 import { StateKV } from "../state/kv.js";
+import { recordAudit } from "./audit.js";
 import { recordAccessBatch } from "./access-tracker.js";
 
 interface FileHistory {
@@ -19,16 +20,37 @@ interface FileHistory {
 }
 
 export function registerFileIndexFunction(sdk: ISdk, kv: StateKV): void {
-  sdk.registerFunction(
-    { id: "mem::file-context" },
-    async (data: { sessionId: string; files: string[]; project?: string }) => {
+  sdk.registerFunction("mem::file-context", 
+    async (
+      data: { sessionId?: string; files?: string[]; project?: string } | undefined,
+    ) => {
       const ctx = getContext();
+      const sessionId =
+        data && typeof data.sessionId === "string" ? data.sessionId.trim() : "";
+      const normalizedProject =
+        typeof data?.project === "string" ? data.project.trim() : undefined;
+      const files = Array.isArray(data?.files)
+        ? data!.files
+            .map((file) => (typeof file === "string" ? file.trim() : ""))
+            .filter(Boolean)
+        : [];
+      if (files.length === 0) {
+        await recordAudit(kv, "observe", "mem::file-context", [sessionId || "unknown"], {
+          error: "invalid_payload",
+          hasSessionId: !!sessionId,
+          hasProject: !!normalizedProject,
+          fileCount: files.length,
+        });
+        return { context: "", files: [] };
+      }
       const results: FileHistory[] = [];
 
       const sessions = await kv.list<Session>(KV.sessions);
-      let otherSessions = sessions.filter((s) => s.id !== data.sessionId);
-      if (data.project) {
-        otherSessions = otherSessions.filter((s) => s.project === data.project);
+      let otherSessions = sessionId
+        ? sessions.filter((s) => s.id !== sessionId)
+        : sessions;
+      if (normalizedProject) {
+        otherSessions = otherSessions.filter((s) => s.project === normalizedProject);
       }
       otherSessions = otherSessions
         .sort(
@@ -45,7 +67,7 @@ export function registerFileIndexFunction(sdk: ISdk, kv: StateKV): void {
         );
       }
 
-      for (const file of data.files) {
+      for (const file of files) {
         const history: FileHistory = { file, observations: [] };
         const normalizedFile = file.replace(/^\.\//, "");
 
@@ -104,7 +126,7 @@ export function registerFileIndexFunction(sdk: ISdk, kv: StateKV): void {
 
       const context = lines.join("\n");
       ctx.logger.info("File context generated", {
-        files: data.files.length,
+        files: files.length,
         results: results.length,
       });
       return { context };

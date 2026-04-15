@@ -1,6 +1,11 @@
 #!/usr/bin/env node
 
-import { spawn, execFileSync, type ChildProcess } from "node:child_process";
+import {
+  spawn,
+  execFileSync,
+  spawnSync,
+  type ChildProcess,
+} from "node:child_process";
 import { existsSync } from "node:fs";
 import { join, dirname, delimiter as PATH_DELIMITER } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -27,6 +32,7 @@ Commands:
   (default)          Start agentmemory worker
   status             Show connection status, memory count, and health
   demo               Seed sample sessions and show recall in action
+  upgrade            Upgrade local deps + iii runtime (best effort)
   mcp                Start standalone MCP server (no engine required)
 
 Options:
@@ -40,6 +46,7 @@ Quick start:
   npx @agentmemory/agentmemory          # start with local iii-engine or Docker
   npx @agentmemory/agentmemory status   # check health
   npx @agentmemory/agentmemory demo     # try it in 30 seconds (needs server running)
+  npx @agentmemory/agentmemory upgrade  # upgrade agentmemory + iii runtime
   npx @agentmemory/agentmemory mcp      # standalone MCP server (no engine)
   npx @agentmemory/mcp                  # same as above (shim package)
 `);
@@ -664,6 +671,129 @@ async function runDemo() {
   p.log.success("agentmemory is working. Point your agent at it and get back to coding.");
 }
 
+function runCommand(
+  command: string,
+  commandArgs: string[],
+  options: { cwd?: string; label: string; optional?: boolean } = { label: "command" },
+): boolean {
+  const spinner = p.spinner();
+  spinner.start(options.label);
+  const result = spawnSync(command, commandArgs, {
+    cwd: options.cwd || process.cwd(),
+    stdio: "pipe",
+    encoding: "utf-8",
+  });
+
+  if (result.status === 0) {
+    spinner.stop(`${options.label} ✓`);
+    return true;
+  }
+
+  const stderr = (result.stderr || "").toString().trim();
+  const stdout = (result.stdout || "").toString().trim();
+  const msg = stderr || stdout || "unknown error";
+
+  if (options.optional) {
+    spinner.stop(`${options.label} (skipped)`);
+    p.log.warn(msg.slice(0, 300));
+    return false;
+  }
+
+  spinner.stop(`${options.label} ✗`);
+  p.log.error(msg.slice(0, 300));
+  return false;
+}
+
+async function runUpgrade() {
+  p.intro("agentmemory upgrade");
+
+  const cwd = process.cwd();
+  const hasPackageJson = existsSync(join(cwd, "package.json"));
+  const hasPnpmLock = existsSync(join(cwd, "pnpm-lock.yaml"));
+
+  const pnpmBin = whichBinary("pnpm");
+  const npmBin = whichBinary("npm");
+  const cargoBin = whichBinary("cargo");
+  const dockerBin = whichBinary("docker");
+
+  p.log.info(`Working directory: ${cwd}`);
+  const requireSuccess = (ok: boolean, label: string): void => {
+    if (!ok) {
+      p.log.error(`Upgrade aborted: ${label} failed.`);
+      process.exit(1);
+    }
+  };
+
+  if (hasPackageJson) {
+    const usePnpm = !!pnpmBin && hasPnpmLock;
+    if (usePnpm && pnpmBin) {
+      const installOk = runCommand(pnpmBin, ["install"], {
+        label: "Refreshing dependencies (pnpm install)",
+      });
+      requireSuccess(installOk, "pnpm install");
+      runCommand(pnpmBin, ["up", "iii-sdk@latest"], {
+        label: "Upgrading iii-sdk to latest",
+        optional: true,
+      });
+    } else if (npmBin) {
+      const installOk = runCommand(npmBin, ["install"], {
+        label: "Refreshing dependencies (npm install)",
+      });
+      requireSuccess(installOk, "npm install");
+      runCommand(npmBin, ["install", "iii-sdk@latest"], {
+        label: "Upgrading iii-sdk to latest",
+        optional: true,
+      });
+    } else {
+      p.log.warn("No package manager found (pnpm/npm). Skipping JS dependency upgrade.");
+    }
+  } else {
+    p.log.warn("No package.json in current directory. Skipping JS dependency upgrade.");
+  }
+
+  if (cargoBin) {
+    const upgradeEngine = await p.confirm({
+      message: "Upgrade iii-engine via cargo install --force?",
+      initialValue: true,
+    });
+    if (p.isCancel(upgradeEngine)) {
+      p.cancel("Cancelled.");
+      return process.exit(0);
+    }
+    if (upgradeEngine === true) {
+      const cargoOk = runCommand(cargoBin, ["install", "iii-engine", "--force"], {
+        label: "Upgrading iii-engine (cargo)",
+      });
+      requireSuccess(cargoOk, "cargo install iii-engine --force");
+    } else {
+      p.log.info("Skipped cargo-based iii-engine upgrade.");
+    }
+  } else {
+    p.log.warn("Cargo not found. Skipping iii-engine binary upgrade.");
+  }
+
+  if (dockerBin) {
+    runCommand(dockerBin, ["pull", "iiidev/iii:latest"], {
+      label: "Pulling latest iii Docker image",
+      optional: true,
+    });
+  } else {
+    p.log.info("Docker not found. Skipping Docker image refresh.");
+  }
+
+  p.note(
+    [
+      "Upgrade flow completed.",
+      "",
+      "Recommended next steps:",
+      "  1) agentmemory status",
+      "  2) npm/pnpm test",
+      "  3) restart agentmemory process",
+    ].join("\n"),
+    "agentmemory upgrade",
+  );
+}
+
 async function runMcp(): Promise<void> {
   await import("./mcp/standalone.js");
 }
@@ -671,6 +801,7 @@ async function runMcp(): Promise<void> {
 const commands: Record<string, () => Promise<void>> = {
   status: runStatus,
   demo: runDemo,
+  upgrade: runUpgrade,
   mcp: runMcp,
 };
 

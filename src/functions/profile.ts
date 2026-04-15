@@ -7,19 +7,20 @@ import type {
 } from "../types.js";
 import { KV } from "../state/schema.js";
 import { StateKV } from "../state/kv.js";
+import { recordAudit } from "./audit.js";
 
 export function registerProfileFunction(sdk: ISdk, kv: StateKV): void {
-  sdk.registerFunction(
-    {
-      id: "mem::profile",
-      description: "Generate or retrieve a project profile from aggregated data",
-    },
-    async (data: { project: string; refresh?: boolean }) => {
+  sdk.registerFunction("mem::profile", 
+    async (data: { project: string; refresh?: boolean } | undefined) => {
       const ctx = getContext();
+      if (!data || typeof data.project !== "string" || !data.project.trim()) {
+        return { success: false, error: "project is required" };
+      }
+      const project = data.project.trim();
 
       if (!data.refresh) {
         const cached = await kv
-          .get<ProjectProfile>(KV.profiles, data.project)
+          .get<ProjectProfile>(KV.profiles, project)
           .catch(() => null);
         if (cached) {
           const age = Date.now() - new Date(cached.updatedAt).getTime();
@@ -31,7 +32,7 @@ export function registerProfileFunction(sdk: ISdk, kv: StateKV): void {
 
       const sessions = await kv.list<Session>(KV.sessions);
       const projectSessions = sessions.filter(
-        (s) => s.project === data.project,
+        (s) => s.project === project,
       );
 
       if (projectSessions.length === 0) {
@@ -98,7 +99,7 @@ export function registerProfileFunction(sdk: ISdk, kv: StateKV): void {
       const uniqueErrors = [...new Set(errors)].slice(0, 10);
 
       const profile: ProjectProfile = {
-        project: data.project,
+        project,
         updatedAt: new Date().toISOString(),
         topConcepts,
         topFiles,
@@ -109,10 +110,14 @@ export function registerProfileFunction(sdk: ISdk, kv: StateKV): void {
         totalObservations: totalObs,
       };
 
-      await kv.set(KV.profiles, data.project, profile);
+      await kv.set(KV.profiles, project, profile);
+      await recordAudit(kv, "share", "mem::profile", [project], {
+        sessionCount: projectSessions.length,
+        totalObservations: totalObs,
+      });
 
       ctx.logger.info("Profile generated", {
-        project: data.project,
+        project,
         sessions: projectSessions.length,
         observations: totalObs,
       });

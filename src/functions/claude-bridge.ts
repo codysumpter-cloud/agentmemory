@@ -74,8 +74,7 @@ export function registerClaudeBridgeFunction(
   kv: StateKV,
   config: ClaudeBridgeConfig,
 ): void {
-  sdk.registerFunction(
-    { id: "mem::claude-bridge-read" },
+  sdk.registerFunction("mem::claude-bridge-read", 
     async () => {
       const ctx = getContext();
       if (!config.enabled || !config.memoryFilePath) {
@@ -94,6 +93,11 @@ export function registerClaudeBridgeFunction(
           sections: Object.fromEntries(sections),
           lineCount: content.split("\n").length,
         });
+        await recordAudit(kv, "export", "mem::claude-bridge-read", ["last-read"], {
+          timestamp: new Date().toISOString(),
+          sections: Object.keys(Object.fromEntries(sections)),
+          lineCount: content.split("\n").length,
+        });
 
         ctx.logger.info("Claude bridge: read MEMORY.md", {
           path: config.memoryFilePath,
@@ -108,8 +112,7 @@ export function registerClaudeBridgeFunction(
     },
   );
 
-  sdk.registerFunction(
-    { id: "mem::claude-bridge-sync" },
+  sdk.registerFunction("mem::claude-bridge-sync", 
     async () => {
       const ctx = getContext();
       if (!config.enabled || !config.memoryFilePath) {

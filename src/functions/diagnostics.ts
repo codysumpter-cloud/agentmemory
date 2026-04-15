@@ -2,6 +2,7 @@ import type { ISdk } from "iii-sdk";
 import type { StateKV } from "../state/kv.js";
 import { KV } from "../state/schema.js";
 import { withKeyedLock } from "../state/keyed-mutex.js";
+import { recordAudit } from "./audit.js";
 import type {
   Action,
   ActionEdge,
@@ -31,8 +32,7 @@ const TWENTY_FOUR_HOURS_MS = 24 * 60 * 60 * 1000;
 const ONE_HOUR_MS = 60 * 60 * 1000;
 
 export function registerDiagnosticsFunction(sdk: ISdk, kv: StateKV): void {
-  sdk.registerFunction(
-    { id: "mem::diagnose" },
+  sdk.registerFunction("mem::diagnose", 
     async (data: { categories?: string[] }) => {
       const categories = data.categories && data.categories.length > 0
         ? data.categories.filter((c) => ALL_CATEGORIES.includes(c))
@@ -407,8 +407,7 @@ export function registerDiagnosticsFunction(sdk: ISdk, kv: StateKV): void {
     },
   );
 
-  sdk.registerFunction(
-    { id: "mem::heal" },
+  sdk.registerFunction("mem::heal", 
     async (data: { categories?: string[]; dryRun?: boolean }) => {
       const dryRun = data.dryRun ?? false;
       const categories = data.categories && data.categories.length > 0
@@ -465,6 +464,11 @@ export function registerDiagnosticsFunction(sdk: ISdk, kv: StateKV): void {
                     fresh.status = "pending";
                     fresh.updatedAt = new Date().toISOString();
                     await kv.set(KV.actions, fresh.id, fresh);
+                    await recordAudit(kv, "heal", "mem::heal", [fresh.id], {
+                      reason: "blocked-deps-done",
+                      previousStatus: "blocked",
+                      newStatus: "pending",
+                    });
                     return true;
                   },
                 );
@@ -519,6 +523,11 @@ export function registerDiagnosticsFunction(sdk: ISdk, kv: StateKV): void {
                     fresh.status = "blocked";
                     fresh.updatedAt = new Date().toISOString();
                     await kv.set(KV.actions, fresh.id, fresh);
+                    await recordAudit(kv, "heal", "mem::heal", [fresh.id], {
+                      reason: "pending-unsatisfied-deps",
+                      previousStatus: "pending",
+                      newStatus: "blocked",
+                    });
                     return true;
                   },
                 );
@@ -554,7 +563,7 @@ export function registerDiagnosticsFunction(sdk: ISdk, kv: StateKV): void {
               continue;
             }
             const didFix = await withKeyedLock(
-              `mem:lease:${lease.actionId}`,
+              `mem:action:${lease.actionId}`,
               async () => {
                 const fresh = await kv.get<Lease>(KV.leases, lease.id);
                 if (
@@ -566,6 +575,11 @@ export function registerDiagnosticsFunction(sdk: ISdk, kv: StateKV): void {
                 }
                 fresh.status = "expired";
                 await kv.set(KV.leases, fresh.id, fresh);
+                await recordAudit(kv, "heal", "mem::heal", [fresh.id], {
+                  entityType: "lease",
+                  reason: "expired-lease",
+                  newStatus: "expired",
+                });
 
                 const action = await kv.get<Action>(KV.actions, fresh.actionId);
                 if (
@@ -577,6 +591,11 @@ export function registerDiagnosticsFunction(sdk: ISdk, kv: StateKV): void {
                   action.assignedTo = undefined;
                   action.updatedAt = new Date().toISOString();
                   await kv.set(KV.actions, action.id, action);
+                  await recordAudit(kv, "heal", "mem::heal", [action.id], {
+                    entityType: "action",
+                    reason: "release-expired-lease",
+                    newStatus: "pending",
+                  });
                 }
                 return true;
               },
@@ -601,6 +620,11 @@ export function registerDiagnosticsFunction(sdk: ISdk, kv: StateKV): void {
               continue;
             }
             await kv.delete(KV.leases, lease.id);
+            await recordAudit(kv, "heal", "mem::heal", [lease.id], {
+              entityType: "lease",
+              reason: "orphaned-lease",
+              action: "delete",
+            });
             details.push(`Deleted orphaned lease ${lease.id}`);
             fixed++;
           }
@@ -639,6 +663,11 @@ export function registerDiagnosticsFunction(sdk: ISdk, kv: StateKV): void {
                 }
                 fresh.status = "expired";
                 await kv.set(KV.sentinels, fresh.id, fresh);
+                await recordAudit(kv, "heal", "mem::heal", [fresh.id], {
+                  entityType: "sentinel",
+                  reason: "expired-sentinel",
+                  newStatus: "expired",
+                });
                 return true;
               },
             );
@@ -689,15 +718,30 @@ export function registerDiagnosticsFunction(sdk: ISdk, kv: StateKV): void {
                     actionIdSet.has(edge.targetActionId)
                   ) {
                     await kv.delete(KV.actionEdges, edge.id);
+                    await recordAudit(kv, "heal", "mem::heal", [edge.id], {
+                      entityType: "actionEdge",
+                      reason: "sketch-gc-discard",
+                      action: "delete",
+                    });
                   }
                 }
                 for (const actionId of fresh.actionIds) {
                   await kv.delete(KV.actions, actionId);
+                  await recordAudit(kv, "heal", "mem::heal", [actionId], {
+                    entityType: "action",
+                    reason: "sketch-gc-discard",
+                    action: "delete",
+                  });
                 }
 
                 fresh.status = "discarded";
                 fresh.discardedAt = new Date().toISOString();
                 await kv.set(KV.sketches, fresh.id, fresh);
+                await recordAudit(kv, "heal", "mem::heal", [fresh.id], {
+                  entityType: "sketch",
+                  reason: "expired-sketch",
+                  newStatus: "discarded",
+                });
                 return true;
               },
             );
@@ -729,6 +773,11 @@ export function registerDiagnosticsFunction(sdk: ISdk, kv: StateKV): void {
               continue;
             }
             await kv.delete(KV.signals, signal.id);
+            await recordAudit(kv, "heal", "mem::heal", [signal.id], {
+              entityType: "signal",
+              reason: "expired-signal",
+              action: "delete",
+            });
             details.push(`Deleted expired signal ${signal.id}`);
             fixed++;
           }
@@ -764,6 +813,11 @@ export function registerDiagnosticsFunction(sdk: ISdk, kv: StateKV): void {
                 fresh.isLatest = false;
                 fresh.updatedAt = new Date().toISOString();
                 await kv.set(KV.memories, fresh.id, fresh);
+                await recordAudit(kv, "heal", "mem::heal", [fresh.id], {
+                  entityType: "memory",
+                  reason: "superseded-memory-mark-non-latest",
+                  action: "update",
+                });
                 return true;
               },
             );

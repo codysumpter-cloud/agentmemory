@@ -17,6 +17,28 @@ type McpResponse = {
   body: unknown;
 };
 
+function asNonEmptyString(value: unknown): string | undefined {
+  return typeof value === "string" && value.trim() ? value.trim() : undefined;
+}
+
+function asNumber(value: unknown, fallback?: number): number | undefined {
+  const n = Number(value);
+  if (Number.isFinite(n)) return n;
+  return fallback;
+}
+
+function parseCsvList(value: unknown): string[] {
+  if (typeof value === "string") {
+    return value.split(",").map((v) => v.trim()).filter(Boolean);
+  }
+  if (Array.isArray(value)) {
+    return value
+      .map((v) => (typeof v === "string" ? v.trim() : ""))
+      .filter(Boolean);
+  }
+  return [];
+}
+
 export function registerMcpEndpoints(
   sdk: ISdk,
   kv: StateKV,
@@ -35,8 +57,7 @@ export function registerMcpEndpoints(
     return null;
   }
 
-  sdk.registerFunction(
-    { id: "mcp::tools::list" },
+  sdk.registerFunction("mcp::tools::list", 
     async (req: ApiRequest): Promise<McpResponse> => {
       const authErr = checkAuth(req, secret);
       if (authErr) return authErr;
@@ -49,8 +70,7 @@ export function registerMcpEndpoints(
     config: { api_path: "/agentmemory/mcp/tools", http_method: "GET" },
   });
 
-  sdk.registerFunction(
-    { id: "mcp::tools::call" },
+  sdk.registerFunction("mcp::tools::call", 
     async (
       req: ApiRequest<{ name: string; arguments: Record<string, unknown> }>,
     ): Promise<McpResponse> => {
@@ -72,10 +92,10 @@ export function registerMcpEndpoints(
                 body: { error: "query is required for memory_recall" },
               };
             }
-            const result = await sdk.trigger("mem::search", {
+            const result = await sdk.trigger({ function_id: "mem::search", payload: {
               query: args.query,
-              limit: (args.limit as number) || 10,
-            });
+              limit: typeof args.limit === "number" ? args.limit : 10,
+            } });
             return {
               status_code: 200,
               body: {
@@ -103,12 +123,12 @@ export function registerMcpEndpoints(
                 ? args.files.split(",").map((f: string) => f.trim()).filter(Boolean)
                 : [];
 
-            const result = await sdk.trigger("mem::remember", {
+            const result = await sdk.trigger({ function_id: "mem::remember", payload: {
               content: args.content,
               type,
               concepts,
               files,
-            });
+            } });
             return {
               status_code: 200,
               body: {
@@ -124,12 +144,19 @@ export function registerMcpEndpoints(
                 body: { error: "files is required for memory_file_history" },
               };
             }
-            const fileList = (args.files as string)
-              .split(",")
-              .map((f: string) => f.trim());
-            const result = await sdk.trigger("mem::file-context", {
-              sessionId: (args.sessionId as string) || "",
-              files: fileList,
+            const fileList = parseCsvList(args.files);
+            if (!fileList.length) {
+              return {
+                status_code: 400,
+                body: { error: "files must contain at least one valid path" },
+              };
+            }
+            const payload: { sessionId?: string; files: string[] } = { files: fileList };
+            const sessionId = asNonEmptyString(args.sessionId);
+            if (sessionId) payload.sessionId = sessionId;
+            const result = await sdk.trigger({
+              function_id: "mem::file-context",
+              payload,
             });
             return {
               status_code: 200,
@@ -147,9 +174,9 @@ export function registerMcpEndpoints(
           }
 
           case "memory_patterns": {
-            const result = await sdk.trigger("mem::patterns", {
+            const result = await sdk.trigger({ function_id: "mem::patterns", payload: {
               project: args.project as string,
-            });
+            } });
             return {
               status_code: 200,
               body: {
@@ -179,14 +206,15 @@ export function registerMcpEndpoints(
                 body: { error: "query is required for memory_smart_search" },
               };
             }
-            const expandIds =
-              typeof args.expandIds === "string"
-                ? args.expandIds.split(",").map((id: string) => id.trim()).slice(0, 20)
-                : [];
-            const result = await sdk.trigger("mem::smart-search", {
-              query: args.query,
-              expandIds,
-              limit: (args.limit as number) || 10,
+            const expandIds = parseCsvList(args.expandIds).slice(0, 20);
+            const limit = Math.max(1, Math.min(100, asNumber(args.limit, 10) ?? 10));
+            const result = await sdk.trigger({
+              function_id: "mem::smart-search",
+              payload: {
+                query: args.query,
+                expandIds,
+                limit,
+              },
             });
             return {
               status_code: 200,
@@ -205,12 +233,12 @@ export function registerMcpEndpoints(
                 body: { error: "anchor is required for memory_timeline" },
               };
             }
-            const result = await sdk.trigger("mem::timeline", {
+            const result = await sdk.trigger({ function_id: "mem::timeline", payload: {
               anchor: args.anchor,
               project: (args.project as string) || undefined,
               before: (args.before as number) || 5,
               after: (args.after as number) || 5,
-            });
+            } });
             return {
               status_code: 200,
               body: {
@@ -228,10 +256,10 @@ export function registerMcpEndpoints(
                 body: { error: "project is required for memory_profile" },
               };
             }
-            const result = await sdk.trigger("mem::profile", {
+            const result = await sdk.trigger({ function_id: "mem::profile", payload: {
               project: args.project,
-              refresh: args.refresh === "true",
-            });
+              refresh: args.refresh === true || args.refresh === "true",
+            } });
             return {
               status_code: 200,
               body: {
@@ -243,7 +271,7 @@ export function registerMcpEndpoints(
           }
 
           case "memory_export": {
-            const result = await sdk.trigger("mem::export", {});
+            const result = await sdk.trigger({ function_id: "mem::export", payload: {} });
             return {
               status_code: 200,
               body: {
@@ -263,13 +291,13 @@ export function registerMcpEndpoints(
             }
             const rawMaxHops = Number(args.maxHops);
             const rawMinConf = Number(args.minConfidence);
-            const result = await sdk.trigger("mem::get-related", {
+            const result = await sdk.trigger({ function_id: "mem::get-related", payload: {
               memoryId: args.memoryId,
               maxHops: Number.isFinite(rawMaxHops) ? rawMaxHops : 2,
               minConfidence: Number.isFinite(rawMinConf)
                 ? Math.max(0, Math.min(1, rawMinConf))
                 : 0,
-            });
+            } });
             return {
               status_code: 200,
               body: {
@@ -287,7 +315,10 @@ export function registerMcpEndpoints(
                 ? "mem::claude-bridge-read"
                 : "mem::claude-bridge-sync";
             try {
-              const result = await sdk.trigger(funcId, {});
+              const result = await sdk.trigger({
+                function_id: funcId,
+                payload: {},
+              });
               return {
                 status_code: 200,
                 body: {
@@ -313,11 +344,23 @@ export function registerMcpEndpoints(
 
           case "memory_graph_query": {
             try {
-              const result = await sdk.trigger("mem::graph-query", {
-                startNodeId: args.startNodeId as string,
-                nodeType: args.nodeType as string,
-                maxDepth: args.maxDepth as number,
-                query: args.query as string,
+              const payload: {
+                startNodeId?: string;
+                nodeType?: string;
+                maxDepth?: number;
+                query?: string;
+              } = {};
+              const startNodeId = asNonEmptyString(args.startNodeId);
+              const nodeType = asNonEmptyString(args.nodeType);
+              const query = asNonEmptyString(args.query);
+              const maxDepth = asNumber(args.maxDepth);
+              if (startNodeId) payload.startNodeId = startNodeId;
+              if (nodeType) payload.nodeType = nodeType;
+              if (query) payload.query = query;
+              if (maxDepth !== undefined) payload.maxDepth = Math.max(1, Math.min(8, maxDepth));
+              const result = await sdk.trigger({
+                function_id: "mem::graph-query",
+                payload,
               });
               return {
                 status_code: 200,
@@ -344,9 +387,9 @@ export function registerMcpEndpoints(
 
           case "memory_consolidate": {
             try {
-              const result = await sdk.trigger("mem::consolidate-pipeline", {
+              const result = await sdk.trigger({ function_id: "mem::consolidate-pipeline", payload: {
                 tier: args.tier as string,
-              });
+              } });
               return {
                 status_code: 200,
                 body: {
@@ -381,10 +424,10 @@ export function registerMcpEndpoints(
               };
             }
             try {
-              const result = await sdk.trigger("mem::team-share", {
+              const result = await sdk.trigger({ function_id: "mem::team-share", payload: {
                 itemId: args.itemId,
                 itemType: args.itemType,
-              });
+              } });
               return {
                 status_code: 200,
                 body: {
@@ -410,9 +453,9 @@ export function registerMcpEndpoints(
 
           case "memory_team_feed": {
             try {
-              const result = await sdk.trigger("mem::team-feed", {
-                limit: (args.limit as number) || 20,
-              });
+              const result = await sdk.trigger({ function_id: "mem::team-feed", payload: {
+                limit: typeof args.limit === "number" ? args.limit : 20,
+              } });
               return {
                 status_code: 200,
                 body: {
@@ -438,10 +481,10 @@ export function registerMcpEndpoints(
 
           case "memory_audit": {
             try {
-              const result = await sdk.trigger("mem::audit-query", {
+              const result = await sdk.trigger({ function_id: "mem::audit-query", payload: {
                 operation: args.operation as string,
-                limit: (args.limit as number) || 50,
-              });
+                limit: typeof args.limit === "number" ? args.limit : 50,
+              } });
               return {
                 status_code: 200,
                 body: {
@@ -473,10 +516,10 @@ export function registerMcpEndpoints(
               .map((id) => id.trim())
               .filter(Boolean);
             try {
-              const result = await sdk.trigger("mem::governance-delete", {
+              const result = await sdk.trigger({ function_id: "mem::governance-delete", payload: {
                 memoryIds: ids,
                 reason: args.reason as string,
-              });
+              } });
               return {
                 status_code: 200,
                 body: {
@@ -498,9 +541,9 @@ export function registerMcpEndpoints(
 
           case "memory_snapshot_create": {
             try {
-              const result = await sdk.trigger("mem::snapshot-create", {
+              const result = await sdk.trigger({ function_id: "mem::snapshot-create", payload: {
                 message: args.message as string,
-              });
+              } });
               return {
                 status_code: 200,
                 body: {
@@ -540,7 +583,7 @@ export function registerMcpEndpoints(
             const tags = typeof args.tags === "string" && args.tags.trim()
               ? args.tags.split(",").map((t: string) => t.trim()).filter(Boolean)
               : [];
-            const actionResult = await sdk.trigger("mem::action-create", {
+            const actionResult = await sdk.trigger({ function_id: "mem::action-create", payload: {
               title: args.title,
               description: args.description,
               priority: args.priority,
@@ -548,7 +591,7 @@ export function registerMcpEndpoints(
               tags,
               parentId: args.parentId,
               edges: edges.length > 0 ? edges : undefined,
-            });
+            } });
             return {
               status_code: 200,
               body: {
@@ -566,12 +609,12 @@ export function registerMcpEndpoints(
                 body: { error: "actionId is required" },
               };
             }
-            const updateResult = await sdk.trigger("mem::action-update", {
+            const updateResult = await sdk.trigger({ function_id: "mem::action-update", payload: {
               actionId: args.actionId,
               status: args.status,
               result: args.result,
               priority: args.priority,
-            });
+            } });
             return {
               status_code: 200,
               body: {
@@ -583,11 +626,11 @@ export function registerMcpEndpoints(
           }
 
           case "memory_frontier": {
-            const frontierResult = await sdk.trigger("mem::frontier", {
+            const frontierResult = await sdk.trigger({ function_id: "mem::frontier", payload: {
               project: args.project,
               agentId: args.agentId,
               limit: args.limit,
-            });
+            } });
             return {
               status_code: 200,
               body: {
@@ -599,10 +642,10 @@ export function registerMcpEndpoints(
           }
 
           case "memory_next": {
-            const nextResult = await sdk.trigger("mem::next", {
+            const nextResult = await sdk.trigger({ function_id: "mem::next", payload: {
               project: args.project,
               agentId: args.agentId,
-            });
+            } });
             return {
               status_code: 200,
               body: {
@@ -627,23 +670,23 @@ export function registerMcpEndpoints(
             const op = args.operation as string;
             let leaseResult;
             if (op === "acquire") {
-              leaseResult = await sdk.trigger("mem::lease-acquire", {
+              leaseResult = await sdk.trigger({ function_id: "mem::lease-acquire", payload: {
                 actionId: args.actionId,
                 agentId: args.agentId,
                 ttlMs: args.ttlMs,
-              });
+              } });
             } else if (op === "release") {
-              leaseResult = await sdk.trigger("mem::lease-release", {
+              leaseResult = await sdk.trigger({ function_id: "mem::lease-release", payload: {
                 actionId: args.actionId,
                 agentId: args.agentId,
                 result: args.result,
-              });
+              } });
             } else if (op === "renew") {
-              leaseResult = await sdk.trigger("mem::lease-renew", {
+              leaseResult = await sdk.trigger({ function_id: "mem::lease-renew", payload: {
                 actionId: args.actionId,
                 agentId: args.agentId,
                 ttlMs: args.ttlMs,
-              });
+              } });
             } else {
               return {
                 status_code: 400,
@@ -667,11 +710,11 @@ export function registerMcpEndpoints(
                 body: { error: "routineId is required" },
               };
             }
-            const runResult = await sdk.trigger("mem::routine-run", {
+            const runResult = await sdk.trigger({ function_id: "mem::routine-run", payload: {
               routineId: args.routineId,
               project: args.project,
               initiatedBy: args.initiatedBy,
-            });
+            } });
             return {
               status_code: 200,
               body: {
@@ -692,13 +735,13 @@ export function registerMcpEndpoints(
                 body: { error: "from and content are required" },
               };
             }
-            const sigResult = await sdk.trigger("mem::signal-send", {
+            const sigResult = await sdk.trigger({ function_id: "mem::signal-send", payload: {
               from: args.from,
               to: args.to,
               content: args.content,
               type: args.type,
               replyTo: args.replyTo,
-            });
+            } });
             return {
               status_code: 200,
               body: {
@@ -716,12 +759,12 @@ export function registerMcpEndpoints(
                 body: { error: "agentId is required" },
               };
             }
-            const readResult = await sdk.trigger("mem::signal-read", {
+            const readResult = await sdk.trigger({ function_id: "mem::signal-read", payload: {
               agentId: args.agentId,
               unreadOnly: args.unreadOnly === true || args.unreadOnly === "true",
               threadId: args.threadId,
               limit: args.limit,
-            });
+            } });
             return {
               status_code: 200,
               body: {
@@ -745,12 +788,12 @@ export function registerMcpEndpoints(
               const linkedIds = typeof args.linkedActionIds === "string" && args.linkedActionIds.trim()
                 ? args.linkedActionIds.split(",").map((s: string) => s.trim())
                 : [];
-              cpResult = await sdk.trigger("mem::checkpoint-create", {
+              cpResult = await sdk.trigger({ function_id: "mem::checkpoint-create", payload: {
                 name: args.name,
                 description: args.description,
                 type: args.type,
                 linkedActionIds: linkedIds,
-              });
+              } });
             } else if (cpOp === "resolve") {
               if (typeof args.checkpointId !== "string" || !args.checkpointId.trim()) {
                 return {
@@ -758,15 +801,15 @@ export function registerMcpEndpoints(
                   body: { error: "checkpointId is required for resolve operation" },
                 };
               }
-              cpResult = await sdk.trigger("mem::checkpoint-resolve", {
+              cpResult = await sdk.trigger({ function_id: "mem::checkpoint-resolve", payload: {
                 checkpointId: args.checkpointId,
                 status: args.status,
-              });
+              } });
             } else if (cpOp === "list") {
-              cpResult = await sdk.trigger("mem::checkpoint-list", {
+              cpResult = await sdk.trigger({ function_id: "mem::checkpoint-list", payload: {
                 status: args.status,
                 type: args.type,
-              });
+              } });
             } else {
               return {
                 status_code: 400,
@@ -784,10 +827,10 @@ export function registerMcpEndpoints(
           }
 
           case "memory_mesh_sync": {
-            const meshResult = await sdk.trigger("mem::mesh-sync", {
+            const meshResult = await sdk.trigger({ function_id: "mem::mesh-sync", payload: {
               peerId: args.peerId,
               direction: args.direction,
-            });
+            } });
             return {
               status_code: 200,
               body: {
@@ -805,15 +848,24 @@ export function registerMcpEndpoints(
             } else if (typeof args.config === "string" && args.config.trim()) {
               try { snlConfig = JSON.parse(args.config); } catch { return { status_code: 400, body: { error: "invalid config JSON" } }; }
             }
-            const snlLinked = typeof args.linkedActionIds === "string" && args.linkedActionIds.trim()
-              ? args.linkedActionIds.split(",").map((s: string) => s.trim()).filter(Boolean)
-              : undefined;
-            const snlResult = await sdk.trigger("mem::sentinel-create", {
-              name: args.name,
-              type: args.type,
-              config: snlConfig,
-              linkedActionIds: snlLinked,
-              expiresInMs: args.expiresInMs,
+            const snlLinked = parseCsvList(args.linkedActionIds);
+            const expiresInMs = asNumber(args.expiresInMs);
+            const name = asNonEmptyString(args.name);
+            const type = asNonEmptyString(args.type);
+            const payload: {
+              name?: string;
+              type?: string;
+              config: Record<string, unknown>;
+              linkedActionIds?: string[];
+              expiresInMs?: number;
+            } = { config: snlConfig };
+            if (name) payload.name = name;
+            if (type) payload.type = type;
+            if (snlLinked.length) payload.linkedActionIds = snlLinked;
+            if (expiresInMs !== undefined) payload.expiresInMs = Math.max(0, expiresInMs);
+            const snlResult = await sdk.trigger({
+              function_id: "mem::sentinel-create",
+              payload,
             });
             return { status_code: 200, body: { content: [{ type: "text", text: JSON.stringify(snlResult, null, 2) }] } };
           }
@@ -827,28 +879,53 @@ export function registerMcpEndpoints(
                 snlTrigPayload = args.result;
               }
             }
-            const snlTrigResult = await sdk.trigger("mem::sentinel-trigger", {
-              sentinelId: args.sentinelId,
+            const sentinelId = asNonEmptyString(args.sentinelId);
+            if (!sentinelId) {
+              return {
+                status_code: 400,
+                body: { error: "sentinelId is required for memory_sentinel_trigger" },
+              };
+            }
+            const snlTrigResult = await sdk.trigger({ function_id: "mem::sentinel-trigger", payload: {
+              sentinelId,
               result: snlTrigPayload,
-            });
+            } });
             return { status_code: 200, body: { content: [{ type: "text", text: JSON.stringify(snlTrigResult, null, 2) }] } };
           }
 
           case "memory_sketch_create": {
-            const skResult = await sdk.trigger("mem::sketch-create", {
-              title: args.title,
-              description: args.description,
-              expiresInMs: args.expiresInMs,
-              project: args.project,
+            const title = asNonEmptyString(args.title);
+            if (!title) {
+              return {
+                status_code: 400,
+                body: { error: "title is required for memory_sketch_create" },
+              };
+            }
+            const sketchPayload = {
+              title,
+              description: asNonEmptyString(args.description),
+              expiresInMs: asNumber(args.expiresInMs),
+              project: asNonEmptyString(args.project),
+            };
+            const skResult = await sdk.trigger({
+              function_id: "mem::sketch-create",
+              payload: sketchPayload,
             });
             return { status_code: 200, body: { content: [{ type: "text", text: JSON.stringify(skResult, null, 2) }] } };
           }
 
           case "memory_sketch_promote": {
-            const skpResult = await sdk.trigger("mem::sketch-promote", {
-              sketchId: args.sketchId,
+            const sketchId = asNonEmptyString(args.sketchId);
+            if (!sketchId) {
+              return {
+                status_code: 400,
+                body: { error: "sketchId is required for memory_sketch_promote" },
+              };
+            }
+            const skpResult = await sdk.trigger({ function_id: "mem::sketch-promote", payload: {
+              sketchId,
               project: args.project,
-            });
+            } });
             return { status_code: 200, body: { content: [{ type: "text", text: JSON.stringify(skpResult, null, 2) }] } };
           }
 
@@ -857,11 +934,11 @@ export function registerMcpEndpoints(
               return { status_code: 400, body: { error: "actionIds is required" } };
             }
             const crysIds = args.actionIds.split(",").map((s: string) => s.trim()).filter(Boolean);
-            const crysResult = await sdk.trigger("mem::crystallize", {
+            const crysResult = await sdk.trigger({ function_id: "mem::crystallize", payload: {
               actionIds: crysIds,
               project: args.project,
               sessionId: args.sessionId,
-            });
+            } });
             return { status_code: 200, body: { content: [{ type: "text", text: JSON.stringify(crysResult, null, 2) }] } };
           }
 
@@ -869,7 +946,7 @@ export function registerMcpEndpoints(
             const diagCats = typeof args.categories === "string" && args.categories.trim()
               ? args.categories.split(",").map((s: string) => s.trim()).filter(Boolean)
               : undefined;
-            const diagResult = await sdk.trigger("mem::diagnose", { categories: diagCats });
+            const diagResult = await sdk.trigger({ function_id: "mem::diagnose", payload: { categories: diagCats } });
             return { status_code: 200, body: { content: [{ type: "text", text: JSON.stringify(diagResult, null, 2) }] } };
           }
 
@@ -877,20 +954,20 @@ export function registerMcpEndpoints(
             const healCats = typeof args.categories === "string" && args.categories.trim()
               ? args.categories.split(",").map((s: string) => s.trim()).filter(Boolean)
               : undefined;
-            const healResult = await sdk.trigger("mem::heal", {
+            const healResult = await sdk.trigger({ function_id: "mem::heal", payload: {
               categories: healCats,
               dryRun: args.dryRun === true || args.dryRun === "true",
-            });
+            } });
             return { status_code: 200, body: { content: [{ type: "text", text: JSON.stringify(healResult, null, 2) }] } };
           }
 
           case "memory_facet_tag": {
-            const fctResult = await sdk.trigger("mem::facet-tag", {
+            const fctResult = await sdk.trigger({ function_id: "mem::facet-tag", payload: {
               targetId: args.targetId,
               targetType: args.targetType,
               dimension: args.dimension,
               value: args.value,
-            });
+            } });
             return { status_code: 200, body: { content: [{ type: "text", text: JSON.stringify(fctResult, null, 2) }] } };
           }
 
@@ -907,11 +984,11 @@ export function registerMcpEndpoints(
             const fqAny = typeof args.matchAny === "string" && args.matchAny.trim()
               ? args.matchAny.split(",").map((s: string) => s.trim()).filter(Boolean)
               : undefined;
-            const fqResult = await sdk.trigger("mem::facet-query", {
+            const fqResult = await sdk.trigger({ function_id: "mem::facet-query", payload: {
               matchAll: fqAll,
               matchAny: fqAny,
               targetType: args.targetType,
-            });
+            } });
             return { status_code: 200, body: { content: [{ type: "text", text: JSON.stringify(fqResult, null, 2) }] } };
           }
 
@@ -919,7 +996,7 @@ export function registerMcpEndpoints(
             if (!args.id || typeof args.id !== "string") {
               return { status_code: 400, body: { error: "id is required" } };
             }
-            const verifyResult = await sdk.trigger("mem::verify", { id: args.id });
+            const verifyResult = await sdk.trigger({ function_id: "mem::verify", payload: { id: args.id } });
             return { status_code: 200, body: { content: [{ type: "text", text: JSON.stringify(verifyResult, null, 2) }] } };
           }
 
@@ -930,14 +1007,14 @@ export function registerMcpEndpoints(
             const lessonTags = typeof args.tags === "string" && args.tags.trim()
               ? args.tags.split(",").map((t: string) => t.trim()).filter(Boolean)
               : [];
-            const lessonSaveResult = await sdk.trigger("mem::lesson-save", {
+            const lessonSaveResult = await sdk.trigger({ function_id: "mem::lesson-save", payload: {
               content: args.content,
               context: args.context || "",
               confidence: args.confidence,
               project: args.project,
               tags: lessonTags,
               source: "manual",
-            });
+            } });
             return { status_code: 200, body: { content: [{ type: "text", text: JSON.stringify(lessonSaveResult, null, 2) }] } };
           }
 
@@ -945,29 +1022,29 @@ export function registerMcpEndpoints(
             if (typeof args.query !== "string" || !args.query.trim()) {
               return { status_code: 400, body: { error: "query is required" } };
             }
-            const lessonRecallResult = await sdk.trigger("mem::lesson-recall", {
+            const lessonRecallResult = await sdk.trigger({ function_id: "mem::lesson-recall", payload: {
               query: args.query,
               project: args.project,
               minConfidence: args.minConfidence,
               limit: args.limit,
-            });
+            } });
             return { status_code: 200, body: { content: [{ type: "text", text: JSON.stringify(lessonRecallResult, null, 2) }] } };
           }
 
           case "memory_reflect": {
-            const reflectResult = await sdk.trigger("mem::reflect", {
+            const reflectResult = await sdk.trigger({ function_id: "mem::reflect", payload: {
               project: args.project,
               maxClusters: args.maxClusters,
-            });
+            } });
             return { status_code: 200, body: { content: [{ type: "text", text: JSON.stringify(reflectResult, null, 2) }] } };
           }
 
           case "memory_insight_list": {
-            const insightListResult = await sdk.trigger("mem::insight-list", {
+            const insightListResult = await sdk.trigger({ function_id: "mem::insight-list", payload: {
               project: args.project,
               minConfidence: args.minConfidence,
               limit: args.limit,
-            });
+            } });
             return { status_code: 200, body: { content: [{ type: "text", text: JSON.stringify(insightListResult, null, 2) }] } };
           }
 
@@ -975,10 +1052,10 @@ export function registerMcpEndpoints(
             const exportTypes = typeof args.types === "string" && args.types.trim()
               ? args.types.split(",").map((t: string) => t.trim()).filter(Boolean)
               : undefined;
-            const obsidianResult = await sdk.trigger("mem::obsidian-export", {
+            const obsidianResult = await sdk.trigger({ function_id: "mem::obsidian-export", payload: {
               vaultDir: args.vaultDir,
               types: exportTypes,
-            });
+            } });
             return { status_code: 200, body: { content: [{ type: "text", text: JSON.stringify(obsidianResult, null, 2) }] } };
           }
 
@@ -1044,8 +1121,7 @@ export function registerMcpEndpoints(
     },
   ];
 
-  sdk.registerFunction(
-    { id: "mcp::resources::list" },
+  sdk.registerFunction("mcp::resources::list", 
     async (req: ApiRequest): Promise<McpResponse> => {
       const authErr = checkAuth(req, secret);
       if (authErr) return authErr;
@@ -1058,8 +1134,7 @@ export function registerMcpEndpoints(
     config: { api_path: "/agentmemory/mcp/resources", http_method: "GET" },
   });
 
-  sdk.registerFunction(
-    { id: "mcp::resources::read" },
+  sdk.registerFunction("mcp::resources::read", 
     async (req: ApiRequest<{ uri: string }>): Promise<McpResponse> => {
       const authErr = checkAuth(req, secret);
       if (authErr) return authErr;
@@ -1106,9 +1181,9 @@ export function registerMcpEndpoints(
               body: { error: "Invalid percent-encoding in URI" },
             };
           }
-          const profile = await sdk.trigger("mem::profile", {
+          const profile = await sdk.trigger({ function_id: "mem::profile", payload: {
             project: projectName,
-          });
+          } });
           return {
             status_code: 200,
             body: {
@@ -1332,8 +1407,7 @@ export function registerMcpEndpoints(
     },
   ];
 
-  sdk.registerFunction(
-    { id: "mcp::prompts::list" },
+  sdk.registerFunction("mcp::prompts::list", 
     async (req: ApiRequest): Promise<McpResponse> => {
       const authErr = checkAuth(req, secret);
       if (authErr) return authErr;
@@ -1346,8 +1420,7 @@ export function registerMcpEndpoints(
     config: { api_path: "/agentmemory/mcp/prompts", http_method: "GET" },
   });
 
-  sdk.registerFunction(
-    { id: "mcp::prompts::get" },
+  sdk.registerFunction("mcp::prompts::get", 
     async (
       req: ApiRequest<{ name: string; arguments?: Record<string, string> }>,
     ): Promise<McpResponse> => {
@@ -1375,7 +1448,10 @@ export function registerMcpEndpoints(
               };
             }
             const searchResult = await sdk
-              .trigger("mem::search", { query: taskDesc, limit: 10 })
+              .trigger({
+                function_id: "mem::search",
+                payload: { query: taskDesc, limit: 10 },
+              })
               .catch(() => ({ results: [] }));
             const memories = await kv.list<Memory>(KV.memories);
             const relevant = memories.filter((m) => m.isLatest).slice(0, 5);
@@ -1434,9 +1510,9 @@ export function registerMcpEndpoints(
                 body: { error: "project argument must be a string" },
               };
             }
-            const result = await sdk.trigger("mem::patterns", {
+            const result = await sdk.trigger({ function_id: "mem::patterns", payload: {
               project: promptArgs.project || undefined,
-            });
+            } });
             return {
               status_code: 200,
               body: {

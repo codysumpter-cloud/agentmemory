@@ -84,8 +84,7 @@ export function registerGraphFunction(
   kv: StateKV,
   provider: MemoryProvider,
 ): void {
-  sdk.registerFunction(
-    { id: "mem::graph-extract" },
+  sdk.registerFunction("mem::graph-extract", 
     async (data: { observations: CompressedObservation[] }) => {
       const ctx = getContext();
       if (!data.observations || data.observations.length === 0) {
@@ -173,8 +172,7 @@ export function registerGraphFunction(
     },
   );
 
-  sdk.registerFunction(
-    { id: "mem::graph-query" },
+  sdk.registerFunction("mem::graph-query", 
     async (data: {
       startNodeId?: string;
       nodeType?: string;
@@ -251,7 +249,7 @@ export function registerGraphFunction(
     },
   );
 
-  sdk.registerFunction({ id: "mem::graph-stats" }, async () => {
+  sdk.registerFunction("mem::graph-stats",  async () => {
     const nodes = await kv.list<GraphNode>(KV.graphNodes);
     const edges = await kv.list<GraphEdge>(KV.graphEdges);
 

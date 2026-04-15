@@ -62,7 +62,7 @@ const ALL_CATEGORIES = [
 const TWENTY_FOUR_HOURS_MS = 1440 * 60 * 1e3;
 const ONE_HOUR_MS = 3600 * 1e3;
 function registerDiagnosticsFunction(sdk, kv) {
-	sdk.registerFunction({ id: "mem::diagnose" }, async (data) => {
+	sdk.registerFunction("mem::diagnose", async (data) => {
 		const categories = data.categories && data.categories.length > 0 ? data.categories.filter((c) => ALL_CATEGORIES.includes(c)) : ALL_CATEGORIES;
 		const checks = [];
 		const now = Date.now();
@@ -333,7 +333,7 @@ function registerDiagnosticsFunction(sdk, kv) {
 			}
 		};
 	});
-	sdk.registerFunction({ id: "mem::heal" }, async (data) => {
+	sdk.registerFunction("mem::heal", async (data) => {
 		const dryRun = data.dryRun ?? false;
 		const categories = data.categories && data.categories.length > 0 ? data.categories.filter((c) => ALL_CATEGORIES.includes(c)) : ALL_CATEGORIES;
 		let fixed = 0;
