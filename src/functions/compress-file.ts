@@ -85,7 +85,9 @@ function validateCompression(original: string, compressed: string): string[] {
 
 function resolveBackupPath(filePath: string): string {
   const base = basename(filePath, extname(filePath));
-  const name = base.endsWith(".original") ? base : `${base}.original`;
+  const name = base.endsWith(".original")
+    ? `${base}.backup`
+    : `${base}.original`;
   return join(dirname(filePath), `${name}.md`);
 }
 

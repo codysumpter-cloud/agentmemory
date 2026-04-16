@@ -127,4 +127,21 @@ describe("mem::compress-file", () => {
     expect(result.details.some((d) => d.includes("url"))).toBe(true);
     expect(fileStore.get("/tmp/guide.original.md")).toBeUndefined();
   });
+
+  it("uses a distinct backup path for *.original.md inputs", async () => {
+    const path = "/tmp/notes.original.md";
+    fileStore.set(path, "# Title\n\nLong original body.");
+    summarize.mockResolvedValue("# Title\n\nShort body.");
+
+    const result = (await sdk.trigger("mem::compress-file", {
+      filePath: path,
+    })) as { success: boolean; backupPath: string };
+
+    expect(result.success).toBe(true);
+    expect(result.backupPath).toBe("/tmp/notes.original.backup.md");
+    expect(fileStore.get("/tmp/notes.original.backup.md")).toBe(
+      "# Title\n\nLong original body.",
+    );
+    expect(fileStore.get(path)).toBe("# Title\n\nShort body.");
+  });
 });
