@@ -169,12 +169,13 @@ export function parseJsonlText(text: string, fallbackSessionId?: string): Parsed
     if (obs.sessionId === "imported") obs.sessionId = effectiveSessionId;
   }
 
+  const nowIso = new Date().toISOString();
   return {
     sessionId: effectiveSessionId,
     project: deriveProject(cwd),
     cwd: cwd || process.cwd(),
-    startedAt: firstTs || new Date().toISOString(),
-    endedAt: lastTs || new Date().toISOString(),
+    startedAt: firstTs || nowIso,
+    endedAt: lastTs || nowIso,
     observations,
   };
 }

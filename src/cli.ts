@@ -830,6 +830,7 @@ async function runImportJsonl(): Promise<void> {
       method: "POST",
       headers,
       body: JSON.stringify(body),
+      signal: AbortSignal.timeout(120_000),
     });
     const json = (await res.json()) as {
       success?: boolean;
@@ -851,7 +852,11 @@ async function runImportJsonl(): Promise<void> {
     }
   } catch (err) {
     spinner.stop("failed");
-    p.log.error(err instanceof Error ? err.message : String(err));
+    if (err instanceof Error && err.name === "TimeoutError") {
+      p.log.error("import timed out after 2 minutes");
+    } else {
+      p.log.error(err instanceof Error ? err.message : String(err));
+    }
     process.exit(1);
   }
 }

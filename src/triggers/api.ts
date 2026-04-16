@@ -369,7 +369,7 @@ export function registerApiTriggers(
             body: { error: "path must be a non-empty string" },
           };
         }
-        payload.path = body.path;
+        payload.path = body.path.trim();
       }
       if (body.maxFiles !== undefined) {
         if (!Number.isInteger(body.maxFiles) || (body.maxFiles as number) < 1) {

@@ -93,4 +93,14 @@ describe("projectTimeline", () => {
     const tl = projectTimeline(parsed.observations);
     expect(tl.events.some((e) => e.kind === "tool_error")).toBe(true);
   });
+
+  it("uses one shared fallback timestamp when metadata missing", () => {
+    const text = JSON.stringify({
+      type: "user",
+      message: { role: "user", content: [{ type: "text", text: "hi" }] },
+    });
+    const out = parseJsonlText(text);
+    expect(out.startedAt).toBe(out.endedAt);
+  });
 });
+

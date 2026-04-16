@@ -578,6 +578,7 @@
     .empty-state p { font-size: 14px; font-family: var(--font-body); font-style: italic; }
 
     .loading { color: var(--ink-faint); padding: 20px; text-align: center; font-style: italic; font-family: var(--font-body); }
+    .empty { color: var(--ink-muted); padding: 24px; text-align: center; font-family: var(--font-body); font-style: italic; border: 1px dashed var(--border); }
 
     .replay-controls { display: flex; align-items: center; gap: 6px; padding: 10px 0; flex-wrap: wrap; font-family: var(--font-ui); font-size: 12px; }
     .replay-controls button { padding: 4px 10px; border: 1px solid var(--border); background: var(--bg); color: var(--ink); cursor: pointer; font-family: var(--font-ui); font-size: 12px; }
@@ -965,6 +966,9 @@
     }
 
     function switchTab(tab) {
+      if (state.activeTab === 'replay' && tab !== 'replay' && typeof stopReplayTimer === 'function') {
+        stopReplayTimer();
+      }
       state.activeTab = tab;
       document.querySelectorAll('.tab-bar button').forEach(function(b) {
         b.classList.toggle('active', b.dataset.tab === tab);

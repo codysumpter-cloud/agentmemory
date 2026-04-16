@@ -1,6 +1,6 @@
 import { homedir } from "node:os";
 import { lstat, readFile, readdir } from "node:fs/promises";
-import { resolve, join, isAbsolute } from "node:path";
+import { resolve, join } from "node:path";
 import type { ISdk } from "iii-sdk";
 import type {
   CompressedObservation,
@@ -14,18 +14,20 @@ import { projectTimeline, type Timeline } from "../replay/timeline.js";
 import { safeAudit } from "./audit.js";
 import { logger } from "../logger.js";
 
-const SENSITIVE_PATH_TERMS = [
-  "secret",
-  "credential",
-  "private_key",
-  ".env",
-  "id_rsa",
-  "token",
+const SENSITIVE_PATH_PATTERNS: RegExp[] = [
+  /(^|[\\/_.-])secret([\\/_.-]|s?$)/i,
+  /(^|[\\/_.-])credentials?([\\/_.-]|$)/i,
+  /(^|[\\/_.-])private[_-]?key([\\/_.-]|$)/i,
+  /(^|[\\/])\.env(\.[\w-]+)?$/i,
+  /(^|[\\/_.-])id_rsa([\\/_.-]|$)/i,
+  /(^|[\\/])auth[_-]?token([\\/_.-]|$)/i,
+  /(^|[\\/])bearer[_-]?token([\\/_.-]|$)/i,
+  /(^|[\\/])access[_-]?token([\\/_.-]|$)/i,
+  /(^|[\\/])api[_-]?token([\\/_.-]|$)/i,
 ];
 
-function isSensitive(path: string): boolean {
-  const lower = path.toLowerCase();
-  return SENSITIVE_PATH_TERMS.some((t) => lower.includes(t));
+export function isSensitive(path: string): boolean {
+  return SENSITIVE_PATH_PATTERNS.some((re) => re.test(path));
 }
 
 async function isSymlink(path: string): Promise<boolean> {
@@ -143,7 +145,10 @@ export function registerReplayFunctions(sdk: ISdk, kv: StateKV): void {
       if (typeof rawPath !== "string" || rawPath.length === 0) {
         return { success: false, error: "path must be a non-empty string" };
       }
-      const abs = isAbsolute(rawPath) ? resolve(rawPath) : resolve(rawPath);
+      const expanded = rawPath.startsWith("~")
+        ? join(homedir(), rawPath.slice(1))
+        : rawPath;
+      const abs = resolve(expanded);
       if (isSensitive(abs)) {
         return { success: false, error: "refusing to process sensitive-looking path" };
       }
@@ -175,6 +180,7 @@ export function registerReplayFunctions(sdk: ISdk, kv: StateKV): void {
       let observationCount = 0;
 
       for (const file of files) {
+        if (isSensitive(file)) continue;
         if (await isSymlink(file)) continue;
         let text: string;
         try {
@@ -191,7 +197,19 @@ export function registerReplayFunctions(sdk: ISdk, kv: StateKV): void {
         if (parsed.observations.length === 0) continue;
 
         const existing = await kv.get<Session>(KV.sessions, parsed.sessionId);
-        if (!existing) {
+        if (existing) {
+          existing.observationCount =
+            (existing.observationCount || 0) + parsed.observations.length;
+          if (parsed.endedAt > (existing.endedAt || "")) {
+            existing.endedAt = parsed.endedAt;
+          }
+          if (existing.status === "active") existing.status = "completed";
+          const existingTags = existing.tags || [];
+          if (!existingTags.includes("jsonl-import")) {
+            existing.tags = [...existingTags, "jsonl-import"];
+          }
+          await kv.set(KV.sessions, existing.id, existing);
+        } else {
           const session: Session = {
             id: parsed.sessionId,
             project: parsed.project,
@@ -205,10 +223,12 @@ export function registerReplayFunctions(sdk: ISdk, kv: StateKV): void {
           await kv.set(KV.sessions, session.id, session);
         }
 
-        for (const obs of parsed.observations) {
-          await kv.set(KV.observations(parsed.sessionId), obs.id, obs);
-          observationCount++;
-        }
+        await Promise.all(
+          parsed.observations.map((obs) =>
+            kv.set(KV.observations(parsed.sessionId), obs.id, obs),
+          ),
+        );
+        observationCount += parsed.observations.length;
         sessionIds.push(parsed.sessionId);
       }
 
