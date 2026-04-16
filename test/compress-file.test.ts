@@ -6,11 +6,33 @@ vi.mock("../src/logger.js", () => ({
 
 const fileStore = new Map<string, string>();
 const symlinkPaths = new Set<string>();
+const openEloopPaths = new Set<string>();
 
 vi.mock("node:fs/promises", () => ({
-  lstat: vi.fn(async (path: string) => ({
-    isSymbolicLink: () => symlinkPaths.has(path),
-  })),
+  lstat: vi.fn(async (path: string) => {
+    if (symlinkPaths.has(path)) {
+      return { isSymbolicLink: () => true };
+    }
+    if (!fileStore.has(path)) {
+      throw Object.assign(new Error(`ENOENT: no such file or directory, lstat '${path}'`), {
+        code: "ENOENT",
+      });
+    }
+    return { isSymbolicLink: () => false };
+  }),
+  open: vi.fn(async (path: string) => {
+    if (openEloopPaths.has(path)) {
+      throw Object.assign(new Error("ELOOP: too many levels of symbolic links"), {
+        code: "ELOOP",
+      });
+    }
+    return {
+      writeFile: vi.fn(async (content: string) => {
+        fileStore.set(path, content);
+      }),
+      close: vi.fn(async () => {}),
+    };
+  }),
   readFile: vi.fn(async (path: string) => {
     const value = fileStore.get(path);
     if (value === undefined) throw new Error("ENOENT");
@@ -73,6 +95,7 @@ describe("mem::compress-file", () => {
   beforeEach(() => {
     fileStore.clear();
     symlinkPaths.clear();
+    openEloopPaths.clear();
     sdk = mockSdk();
     kv = mockKV();
     summarize = vi.fn();
@@ -90,6 +113,26 @@ describe("mem::compress-file", () => {
     })) as { success: boolean; error: string };
     expect(result.success).toBe(false);
     expect(result.error).toContain("symlink");
+    expect(summarize).not.toHaveBeenCalled();
+    expect(fileStore.size).toBe(0);
+  });
+
+  it("rejects TOCTOU symlink swap at write time via O_NOFOLLOW", async () => {
+    const path = "/tmp/notes.md";
+    fileStore.set(
+      path,
+      "# Title\n\nVisit https://example.com\n\n```ts\nconst x = 1;\n```\n\nContent.",
+    );
+    summarize.mockResolvedValue(
+      "# Title\n\nVisit https://example.com\n\n```ts\nconst x = 1;\n```\n\nShort.",
+    );
+    openEloopPaths.add(path);
+
+    const result = (await sdk.trigger("mem::compress-file", {
+      filePath: path,
+    })) as { success: boolean; error: string };
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("symlink");
   });
 
   it("rejects non-markdown paths", async () => {
@@ -98,6 +141,14 @@ describe("mem::compress-file", () => {
     })) as { success: boolean; error: string };
     expect(result.success).toBe(false);
     expect(result.error).toContain(".md");
+  });
+
+  it("returns file not found for missing paths", async () => {
+    const result = (await sdk.trigger("mem::compress-file", {
+      filePath: "/tmp/nonexistent.md",
+    })) as { success: boolean; error: string };
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("not found");
   });
 
   it("compresses markdown and writes .original.md backup", async () => {
@@ -140,5 +191,22 @@ describe("mem::compress-file", () => {
     expect(result.error).toContain("validation");
     expect(result.details.some((d) => d.includes("url"))).toBe(true);
     expect(fileStore.get("/tmp/guide.original.md")).toBeUndefined();
+  });
+
+  it("uses a distinct backup path for *.original.md inputs", async () => {
+    const path = "/tmp/notes.original.md";
+    fileStore.set(path, "# Title\n\nLong original body.");
+    summarize.mockResolvedValue("# Title\n\nShort body.");
+
+    const result = (await sdk.trigger("mem::compress-file", {
+      filePath: path,
+    })) as { success: boolean; backupPath: string };
+
+    expect(result.success).toBe(true);
+    expect(result.backupPath).toBe("/tmp/notes.original.backup.md");
+    expect(fileStore.get("/tmp/notes.original.backup.md")).toBe(
+      "# Title\n\nLong original body.",
+    );
+    expect(fileStore.get(path)).toBe("# Title\n\nShort body.");
   });
 });
