@@ -43,6 +43,7 @@
   <a href="#how-it-works">How It Works</a> &bull;
   <a href="#mcp-server">MCP</a> &bull;
   <a href="#real-time-viewer">Viewer</a> &bull;
+  <a href="#iii-console--trace-level-engine-inspection">iii Console</a> &bull;
   <a href="#configuration">Config</a> &bull;
   <a href="#api">API</a>
 </p>
@@ -717,6 +718,44 @@ open http://localhost:3113
 ```
 
 The viewer server binds to `127.0.0.1` by default. The REST-served `/agentmemory/viewer` endpoint follows the normal `AGENTMEMORY_SECRET` bearer-token rules. CSP headers use a per-response script nonce and disable inline handler attributes (`script-src-attr 'none'`).
+
+### iii console — trace-level engine inspection
+
+agentmemory runs on the [iii engine](https://iii.dev), so the official [iii console](https://iii.dev/docs/console) gives you OpenTelemetry traces, the raw key/value state store, the stream monitor, and a direct function invoker for every piece of memory machinery. Use it to watch a `memory.search` call hit BM25 → embeddings → reranker in real time, replay a hook invocation, or poke individual functions without going through MCP.
+
+**Install once:**
+
+```bash
+curl -fsSL https://install.iii.dev/console/main/install.sh | sh
+```
+
+**Launch alongside agentmemory:**
+
+```bash
+# The agentmemory viewer already holds port 3113, so run the console on 3114.
+iii-console --port 3114 --engine-port 3111 --ws-port 3112
+```
+
+Then open `http://localhost:3114`.
+
+**What you can do from the console:**
+
+| Page | Use it to |
+|------|-----------|
+| **Functions** | Invoke any of agentmemory's ~33 functions directly with a JSON payload — handy for testing `memory.recall`, `memory.consolidate`, `graph.query` without wiring a client. |
+| **Triggers** | Replay HTTP triggers (the 49 REST endpoints), fire the consolidation cron manually, or emit queue events. |
+| **States** | Browse the KV store — sessions, memory slots, lifecycle timers, embeddings index — and edit values in place. |
+| **Streams** | Watch live memory writes, hook events, and observation updates as they flow through iii's WebSocket stream. |
+| **Traces** | OpenTelemetry waterfall / flame / service-breakdown views. Filter by `trace_id` to see exactly which functions, DB calls, and embedding requests a single `memory.search` produced. |
+| **Logs** | Structured OTEL logs correlated to trace/span IDs. |
+
+**Traces are already on:**
+
+`iii-config.yaml` ships with the `iii-observability` worker enabled (`exporter: memory`, `sampling_ratio: 1.0`, metrics + logs). No extra config needed — the moment agentmemory starts, every memory operation emits a trace span and a structured log the console can read.
+
+If you want to export to Jaeger/Honeycomb/Grafana Tempo instead, change `exporter: memory` to `exporter: otlp` and set the collector endpoint per iii's observability docs.
+
+> **Heads-up:** no auth is enforced on the console itself — keep it bound to `127.0.0.1` (the default) and never expose it publicly.
 
 ---
 
