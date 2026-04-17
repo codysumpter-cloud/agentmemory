@@ -34,6 +34,7 @@ Commands:
   demo               Seed sample sessions and show recall in action
   upgrade            Upgrade local deps + iii runtime (best effort)
   mcp                Start standalone MCP server (no engine required)
+  import-jsonl [p]   Import Claude Code JSONL transcripts (default: ~/.claude/projects)
 
 Options:
   --help, -h         Show this help
@@ -798,11 +799,74 @@ async function runMcp(): Promise<void> {
   await import("./mcp/standalone.js");
 }
 
+async function runImportJsonl(): Promise<void> {
+  const nonFlagArgs = args.slice(1).filter((a) => !a.startsWith("-"));
+  const pathArg = nonFlagArgs[0];
+  const port = getRestPort();
+  const base = `http://localhost:${port}`;
+
+  try {
+    await fetch(`${base}/agentmemory/livez`, {
+      signal: AbortSignal.timeout(2000),
+    });
+  } catch {
+    p.log.error(`agentmemory is not running on port ${port}. Start it first.`);
+    process.exit(1);
+  }
+
+  const body: Record<string, unknown> = {};
+  if (pathArg) body["path"] = pathArg;
+
+  const headers: Record<string, string> = { "content-type": "application/json" };
+  const secret = process.env["AGENTMEMORY_SECRET"];
+  if (secret) headers["authorization"] = `Bearer ${secret}`;
+
+  p.log.info(`Importing JSONL from ${pathArg || "~/.claude/projects"}…`);
+  const spinner = p.spinner();
+  spinner.start("scanning files");
+
+  try {
+    const res = await fetch(`${base}/agentmemory/replay/import-jsonl`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(body),
+      signal: AbortSignal.timeout(120_000),
+    });
+    const json = (await res.json()) as {
+      success?: boolean;
+      error?: string;
+      imported?: number;
+      sessionIds?: string[];
+      observations?: number;
+    };
+    if (!res.ok || json.success === false) {
+      spinner.stop("failed");
+      p.log.error(json.error || `HTTP ${res.status}`);
+      process.exit(1);
+    }
+    spinner.stop(
+      `imported ${json.imported} file(s), ${json.observations} observation(s) across ${json.sessionIds?.length || 0} session(s)`,
+    );
+    if (json.sessionIds && json.sessionIds.length > 0) {
+      p.log.info(`View at http://localhost:${port + 2} → Replay tab`);
+    }
+  } catch (err) {
+    spinner.stop("failed");
+    if (err instanceof Error && err.name === "TimeoutError") {
+      p.log.error("import timed out after 2 minutes");
+    } else {
+      p.log.error(err instanceof Error ? err.message : String(err));
+    }
+    process.exit(1);
+  }
+}
+
 const commands: Record<string, () => Promise<void>> = {
   status: runStatus,
   demo: runDemo,
   upgrade: runUpgrade,
   mcp: runMcp,
+  "import-jsonl": runImportJsonl,
 };
 
 const handler = commands[args[0] ?? ""] ?? main;

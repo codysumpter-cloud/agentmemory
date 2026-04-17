@@ -578,6 +578,35 @@
     .empty-state p { font-size: 14px; font-family: var(--font-body); font-style: italic; }
 
     .loading { color: var(--ink-faint); padding: 20px; text-align: center; font-style: italic; font-family: var(--font-body); }
+    .empty { color: var(--ink-muted); padding: 24px; text-align: center; font-family: var(--font-body); font-style: italic; border: 1px dashed var(--border); }
+
+    .replay-controls { display: flex; align-items: center; gap: 6px; padding: 10px 0; flex-wrap: wrap; font-family: var(--font-ui); font-size: 12px; }
+    .replay-controls button { padding: 4px 10px; border: 1px solid var(--border); background: var(--bg); color: var(--ink); cursor: pointer; font-family: var(--font-ui); font-size: 12px; }
+    .replay-controls button:hover { background: var(--bg-alt); }
+    .replay-controls button.active { background: var(--ink); color: var(--bg); }
+    .replay-controls .sep { width: 12px; }
+    .replay-progress { height: 3px; background: var(--border-light); margin: 4px 0 12px 0; }
+    .replay-progress-bar { height: 100%; background: var(--ink); transition: width 100ms linear; }
+    .replay-grid { display: grid; grid-template-columns: 340px 1fr; gap: 16px; align-items: start; }
+    .replay-list { max-height: 60vh; overflow-y: auto; border: 1px solid var(--border); }
+    .replay-event { display: grid; grid-template-columns: 90px 1fr 60px; gap: 8px; padding: 6px 10px; border-bottom: 1px solid var(--border-light); font-family: var(--font-ui); font-size: 11px; cursor: default; }
+    .replay-event:hover { background: var(--bg-alt); }
+    .replay-event-active { background: var(--bg-alt); border-left: 2px solid var(--ink); }
+    .replay-event-kind { font-size: 9px; text-transform: uppercase; letter-spacing: 0.1em; color: var(--ink-muted); align-self: center; }
+    .replay-event-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .replay-event-time { text-align: right; font-family: var(--font-mono); color: var(--ink-muted); }
+    .replay-event-prompt .replay-event-kind { color: var(--blue, #0366d6); }
+    .replay-event-response .replay-event-kind { color: var(--green, #2ea043); }
+    .replay-event-tool_call .replay-event-kind { color: var(--orange, #bf8700); }
+    .replay-event-tool_result .replay-event-kind { color: var(--ink-muted); }
+    .replay-event-tool_error .replay-event-kind { color: var(--red, #cf222e); }
+    .replay-detail { border: 1px solid var(--border); padding: 14px; max-height: 60vh; overflow-y: auto; font-family: var(--font-body); font-size: 13px; }
+    .replay-detail-header { margin-bottom: 6px; }
+    .replay-body { background: var(--bg-alt); padding: 10px; white-space: pre-wrap; word-break: break-word; font-family: var(--font-mono); font-size: 12px; }
+    .replay-tool { margin-top: 10px; font-family: var(--font-ui); font-size: 12px; }
+    .replay-tool-block { margin-top: 8px; }
+    .replay-tool-block pre { background: var(--bg-alt); padding: 10px; max-height: 240px; overflow: auto; font-family: var(--font-mono); font-size: 11px; white-space: pre-wrap; word-break: break-word; }
+    .muted { color: var(--ink-muted); font-size: 11px; }
 
     .metric-table { width: 100%; border-collapse: collapse; font-size: 12px; }
     .metric-table th { padding: 6px 8px; font-size: 9px; text-transform: uppercase; letter-spacing: 0.12em; color: var(--ink-muted); border-bottom: 2px solid var(--border); text-align: left; font-family: var(--font-ui); font-weight: 600; }
@@ -782,6 +811,7 @@
     <button data-tab="audit">Audit</button>
     <button data-tab="activity">Activity</button>
     <button data-tab="profile">Profile</button>
+    <button data-tab="replay">Replay</button>
   </div>
 
   <div id="view-dashboard" class="view active"></div>
@@ -795,6 +825,7 @@
   <div id="view-audit" class="view"></div>
   <div id="view-activity" class="view"></div>
   <div id="view-profile" class="view"></div>
+  <div id="view-replay" class="view"></div>
 
   <div id="modal-overlay" class="modal-overlay">
     <div class="modal" id="modal"></div>
@@ -871,6 +902,7 @@
       actions: { loaded: false, items: [], frontier: [], statusFilter: '', search: '' },
       crystals: { loaded: false, items: [], search: '' },
       profile: { loaded: false, projects: [], selectedProject: '', data: null },
+      replay: { loaded: false, sessions: [], selectedId: '', timeline: null, cursor: 0, playing: false, speed: 1, timer: null, startAt: 0, offsetAt: 0 },
       ws: null
     };
 
@@ -934,6 +966,9 @@
     }
 
     function switchTab(tab) {
+      if (state.activeTab === 'replay' && tab !== 'replay' && typeof stopReplayTimer === 'function') {
+        stopReplayTimer();
+      }
       state.activeTab = tab;
       document.querySelectorAll('.tab-bar button').forEach(function(b) {
         b.classList.toggle('active', b.dataset.tab === tab);
@@ -957,6 +992,7 @@
         case 'audit': if (!state.audit.loaded) await loadAudit(); break;
         case 'activity': if (!state.activity.loaded) await loadActivity(); break;
         case 'profile': if (!state.profile.loaded) await loadProfile(); break;
+        case 'replay': if (!state.replay.loaded) await loadReplay(); break;
       }
     }
 
@@ -3006,9 +3042,237 @@
         var auditIndex = parseInt(target.getAttribute('data-audit-index') || '', 10);
         if (!Number.isNaN(auditIndex)) toggleAuditDetail(auditIndex);
       }
+      if (action === 'replay-select') {
+        var rSid = target.getAttribute('data-session-id');
+        if (rSid) selectReplaySession(rSid);
+        return;
+      }
+      if (action === 'replay-toggle-play') { toggleReplayPlay(); return; }
+      if (action === 'replay-step') {
+        var d = parseInt(target.getAttribute('data-dir') || '1', 10);
+        stepReplay(d);
+        return;
+      }
+      if (action === 'replay-speed') {
+        var sp = parseFloat(target.getAttribute('data-speed') || '1');
+        setReplaySpeed(sp);
+        return;
+      }
+      if (action === 'replay-reset') { resetReplay(); return; }
+      if (action === 'replay-import') { runReplayImport(); return; }
+      if (action === 'replay-refresh') { refreshReplaySessions(); return; }
     });
     document.getElementById('modal-overlay').addEventListener('click', function(e) {
       if (e.target === this) closeModal();
+    });
+
+    async function loadReplay() {
+      var el = document.getElementById('view-replay');
+      el.innerHTML = '<div class="loading">Loading sessions…</div>';
+      var res = await apiGet('replay/sessions');
+      state.replay.sessions = (res && res.sessions) || [];
+      state.replay.loaded = true;
+      renderReplay();
+    }
+
+    async function refreshReplaySessions() {
+      state.replay.loaded = false;
+      await loadReplay();
+    }
+
+    function renderReplay() {
+      var el = document.getElementById('view-replay');
+      var sessions = state.replay.sessions || [];
+      var options = '<option value="">— pick a session —</option>' + sessions.map(function(s) {
+        var label = (s.project || 'unknown') + ' · ' + (s.id || '').slice(0, 8) + ' · ' + (s.observationCount || 0) + ' obs';
+        return '<option value="' + esc(s.id) + '"' + (s.id === state.replay.selectedId ? ' selected' : '') + '>' + esc(label) + '</option>';
+      }).join('');
+
+      var tl = state.replay.timeline;
+      var hasTl = tl && tl.events && tl.events.length > 0;
+      var cursorEvent = hasTl ? tl.events[Math.min(state.replay.cursor, tl.events.length - 1)] : null;
+      var progress = hasTl && tl.totalDurationMs > 0 ? Math.min(100, (state.replay.offsetAt / tl.totalDurationMs) * 100) : 0;
+
+      el.innerHTML =
+        '<div class="toolbar">' +
+          '<select id="replay-session-select">' + options + '</select>' +
+          '<button data-action="replay-refresh">Refresh</button>' +
+          '<span class="sep"></span>' +
+          '<input type="text" id="replay-import-path" placeholder="~/.claude/projects or file.jsonl" style="width:280px">' +
+          '<button data-action="replay-import">Import JSONL</button>' +
+        '</div>' +
+        (hasTl
+          ? '<div class="replay-controls">' +
+              '<button data-action="replay-step" data-dir="-1" title="Previous (←)">◀</button>' +
+              '<button data-action="replay-toggle-play" title="Play/Pause (Space)">' + (state.replay.playing ? '❚❚ Pause' : '▶ Play') + '</button>' +
+              '<button data-action="replay-step" data-dir="1" title="Next (→)">▶</button>' +
+              '<button data-action="replay-reset" title="Reset">⟲</button>' +
+              '<span class="sep"></span>' +
+              '<span>Speed</span>' +
+              ['0.5', '1', '2', '4'].map(function(sp) {
+                var active = Math.abs(state.replay.speed - parseFloat(sp)) < 0.01;
+                return '<button data-action="replay-speed" data-speed="' + sp + '"' + (active ? ' class="active"' : '') + '>' + sp + '×</button>';
+              }).join('') +
+              '<span class="sep"></span>' +
+              '<span>' + (state.replay.cursor + 1) + ' / ' + tl.eventCount + '</span>' +
+            '</div>' +
+            '<div class="replay-progress"><div class="replay-progress-bar" style="width:' + progress.toFixed(1) + '%"></div></div>' +
+            '<div class="replay-grid">' +
+              '<div class="replay-list" id="replay-list">' +
+                tl.events.map(function(ev, i) {
+                  var active = i === state.replay.cursor ? ' replay-event-active' : '';
+                  return '<div class="replay-event replay-event-' + esc(ev.kind) + active + '" data-replay-idx="' + i + '">' +
+                    '<span class="replay-event-kind">' + esc(ev.kind) + '</span>' +
+                    '<span class="replay-event-label">' + esc(ev.label) + '</span>' +
+                    '<span class="replay-event-time">' + (ev.offsetMs / 1000).toFixed(1) + 's</span>' +
+                  '</div>';
+                }).join('') +
+              '</div>' +
+              '<div class="replay-detail">' + renderReplayDetail(cursorEvent) + '</div>' +
+            '</div>'
+          : '<div class="empty">Pick a session to replay, or import Claude Code JSONL transcripts from ~/.claude/projects.</div>');
+
+      var sel = document.getElementById('replay-session-select');
+      if (sel) sel.addEventListener('change', function() { selectReplaySession(sel.value); });
+    }
+
+    function renderReplayDetail(ev) {
+      if (!ev) return '<div class="empty">No event selected.</div>';
+      var blocks = [];
+      blocks.push('<div class="replay-detail-header"><b>' + esc(ev.label) + '</b> <span class="muted">' + esc(ev.kind) + '</span></div>');
+      if (ev.ts) blocks.push('<div class="muted">' + esc(formatTime(ev.ts)) + '</div>');
+      if (ev.body) {
+        blocks.push('<pre class="replay-body">' + esc(ev.body) + '</pre>');
+      }
+      if (ev.toolName) {
+        blocks.push('<div class="replay-tool"><b>Tool:</b> ' + esc(ev.toolName) + '</div>');
+      }
+      if (ev.toolInput !== undefined && ev.toolInput !== null) {
+        var inp = typeof ev.toolInput === 'string' ? ev.toolInput : JSON.stringify(ev.toolInput, null, 2);
+        blocks.push('<div class="replay-tool-block"><b>Input</b><pre>' + esc(truncate(inp, 4000)) + '</pre></div>');
+      }
+      if (ev.toolOutput !== undefined && ev.toolOutput !== null) {
+        var out = typeof ev.toolOutput === 'string' ? ev.toolOutput : JSON.stringify(ev.toolOutput, null, 2);
+        blocks.push('<div class="replay-tool-block"><b>Output</b><pre>' + esc(truncate(out, 4000)) + '</pre></div>');
+      }
+      return blocks.join('');
+    }
+
+    async function selectReplaySession(sessionId) {
+      stopReplayTimer();
+      state.replay.selectedId = sessionId;
+      state.replay.timeline = null;
+      state.replay.cursor = 0;
+      state.replay.offsetAt = 0;
+      state.replay.playing = false;
+      if (!sessionId) { renderReplay(); return; }
+      var el = document.getElementById('view-replay');
+      el.innerHTML = '<div class="loading">Loading replay…</div>';
+      var res = await apiGet('replay/load?sessionId=' + encodeURIComponent(sessionId));
+      if (res && res.success && res.timeline) {
+        state.replay.timeline = res.timeline;
+      } else {
+        state.replay.timeline = { events: [], eventCount: 0, totalDurationMs: 0 };
+      }
+      renderReplay();
+    }
+
+    function toggleReplayPlay() {
+      if (!state.replay.timeline || state.replay.timeline.eventCount === 0) return;
+      if (state.replay.playing) {
+        stopReplayTimer();
+      } else {
+        startReplayTimer();
+      }
+      renderReplay();
+    }
+
+    function startReplayTimer() {
+      state.replay.playing = true;
+      state.replay.startAt = Date.now();
+      var baseOffset = state.replay.offsetAt;
+      if (state.replay.timer) clearInterval(state.replay.timer);
+      state.replay.timer = setInterval(function() {
+        if (!state.replay.timeline) return;
+        var elapsed = (Date.now() - state.replay.startAt) * state.replay.speed;
+        state.replay.offsetAt = baseOffset + elapsed;
+        var events = state.replay.timeline.events;
+        var newCursor = state.replay.cursor;
+        for (var i = newCursor; i < events.length; i++) {
+          if (events[i].offsetMs <= state.replay.offsetAt) newCursor = i;
+          else break;
+        }
+        var changed = newCursor !== state.replay.cursor;
+        state.replay.cursor = newCursor;
+        if (state.replay.offsetAt >= state.replay.timeline.totalDurationMs) {
+          state.replay.offsetAt = state.replay.timeline.totalDurationMs;
+          stopReplayTimer();
+          renderReplay();
+          return;
+        }
+        if (changed) renderReplay();
+      }, 100);
+    }
+
+    function stopReplayTimer() {
+      state.replay.playing = false;
+      if (state.replay.timer) {
+        clearInterval(state.replay.timer);
+        state.replay.timer = null;
+      }
+    }
+
+    function stepReplay(dir) {
+      if (!state.replay.timeline) return;
+      stopReplayTimer();
+      var next = state.replay.cursor + dir;
+      if (next < 0) next = 0;
+      if (next >= state.replay.timeline.eventCount) next = state.replay.timeline.eventCount - 1;
+      state.replay.cursor = next;
+      state.replay.offsetAt = state.replay.timeline.events[next].offsetMs;
+      renderReplay();
+    }
+
+    function setReplaySpeed(sp) {
+      if (!sp || sp <= 0) return;
+      var wasPlaying = state.replay.playing;
+      stopReplayTimer();
+      state.replay.speed = sp;
+      if (wasPlaying) startReplayTimer();
+      renderReplay();
+    }
+
+    function resetReplay() {
+      stopReplayTimer();
+      state.replay.cursor = 0;
+      state.replay.offsetAt = 0;
+      renderReplay();
+    }
+
+    async function runReplayImport() {
+      var input = document.getElementById('replay-import-path');
+      var pathVal = input ? input.value.trim() : '';
+      var body = {};
+      if (pathVal) body.path = pathVal;
+      var el = document.getElementById('view-replay');
+      var prior = el.innerHTML;
+      el.innerHTML = '<div class="loading">Importing JSONL…</div>';
+      var res = await apiPost('replay/import-jsonl', body);
+      if (!res || res.success === false) {
+        el.innerHTML = prior;
+        alert((res && res.error) || 'Import failed');
+        return;
+      }
+      alert('Imported ' + (res.imported || 0) + ' file(s), ' + (res.observations || 0) + ' observation(s)');
+      await refreshReplaySessions();
+    }
+
+    document.addEventListener('keydown', function(e) {
+      if (state.activeTab !== 'replay') return;
+      if (e.target && (e.target.tagName === 'INPUT' || e.target.tagName === 'SELECT' || e.target.tagName === 'TEXTAREA')) return;
+      if (e.key === ' ') { e.preventDefault(); toggleReplayPlay(); }
+      else if (e.key === 'ArrowLeft') { e.preventDefault(); stepReplay(-1); }
+      else if (e.key === 'ArrowRight') { e.preventDefault(); stepReplay(1); }
     });
 
     loadTab('dashboard');

@@ -6,6 +6,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 
 ## [Unreleased]
 
+## [0.8.13] — 2026-04-17
+
+### Added
+
+- Session replay: new "Replay" tab in the viewer that plays any stored session as a scrubbable timeline with prompt, response, tool-call, and tool-result events. Keyboard bindings: space to play/pause, arrow keys to step, speed selector (0.5×–4×).
+- JSONL transcript import via `agentmemory import-jsonl [path]` CLI subcommand and `POST /agentmemory/replay/import-jsonl`. Default path `~/.claude/projects`, or pass an explicit file/directory. Imports are recorded in the audit log.
+- New iii functions `mem::replay::load`, `mem::replay::sessions`, and `mem::replay::import-jsonl`, each routed through the same HMAC-authed API trigger as other endpoints.
+
+### Security
+
+- JSONL import rejects symlinks, paths containing sensitive terms (`secret`, `credential`, `.env`, etc.), and skips malformed lines without aborting the batch.
+
 ## [0.8.12] — 2026-04-16
 
 ### Added

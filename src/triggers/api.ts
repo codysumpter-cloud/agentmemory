@@ -319,6 +319,80 @@ export function registerApiTriggers(
     config: { api_path: "/agentmemory/compress-file", http_method: "POST" },
   });
 
+  sdk.registerFunction("api::replay::load",
+    async (req: ApiRequest): Promise<Response> => {
+      const authErr = checkAuth(req, secret);
+      if (authErr) return authErr;
+      const sessionId = asNonEmptyString(req.query_params?.["sessionId"]);
+      if (!sessionId) {
+        return { status_code: 400, body: { error: "sessionId is required" } };
+      }
+      const result = await sdk.trigger({
+        function_id: "mem::replay::load",
+        payload: { sessionId },
+      });
+      return { status_code: 200, body: result };
+    },
+  );
+  sdk.registerTrigger({
+    type: "http",
+    function_id: "api::replay::load",
+    config: { api_path: "/agentmemory/replay/load", http_method: "GET" },
+  });
+
+  sdk.registerFunction("api::replay::sessions",
+    async (req: ApiRequest): Promise<Response> => {
+      const authErr = checkAuth(req, secret);
+      if (authErr) return authErr;
+      const result = await sdk.trigger({ function_id: "mem::replay::sessions" });
+      return { status_code: 200, body: result };
+    },
+  );
+  sdk.registerTrigger({
+    type: "http",
+    function_id: "api::replay::sessions",
+    config: { api_path: "/agentmemory/replay/sessions", http_method: "GET" },
+  });
+
+  sdk.registerFunction("api::replay::import",
+    async (
+      req: ApiRequest<{ path?: string; maxFiles?: number }>,
+    ): Promise<Response> => {
+      const authErr = checkAuth(req, secret);
+      if (authErr) return authErr;
+      const body = (req.body ?? {}) as Record<string, unknown>;
+      const payload: { path?: string; maxFiles?: number } = {};
+      if (body.path !== undefined) {
+        if (typeof body.path !== "string" || body.path.trim().length === 0) {
+          return {
+            status_code: 400,
+            body: { error: "path must be a non-empty string" },
+          };
+        }
+        payload.path = body.path.trim();
+      }
+      if (body.maxFiles !== undefined) {
+        if (!Number.isInteger(body.maxFiles) || (body.maxFiles as number) < 1) {
+          return {
+            status_code: 400,
+            body: { error: "maxFiles must be a positive integer" },
+          };
+        }
+        payload.maxFiles = body.maxFiles as number;
+      }
+      const result = await sdk.trigger({
+        function_id: "mem::replay::import-jsonl",
+        payload,
+      });
+      return { status_code: 202, body: result };
+    },
+  );
+  sdk.registerTrigger({
+    type: "http",
+    function_id: "api::replay::import",
+    config: { api_path: "/agentmemory/replay/import-jsonl", http_method: "POST" },
+  });
+
   sdk.registerFunction("api::session::start",
     async (
       req: ApiRequest<{ sessionId: string; project: string; cwd: string }>,
