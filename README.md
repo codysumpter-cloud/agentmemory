@@ -749,7 +749,7 @@ Then open `http://localhost:3114`.
 | Page | Use it to |
 |------|-----------|
 | **Functions** | Invoke any of agentmemory's ~33 functions directly with a JSON payload — handy for testing `memory.recall`, `memory.consolidate`, `graph.query` without wiring a client. |
-| **Triggers** | Replay HTTP triggers (the 49 REST endpoints), fire the consolidation cron manually, or emit queue events. |
+| **Triggers** | Replay HTTP triggers (the agentmemory REST endpoints), fire the consolidation cron manually, or emit queue events. |
 | **States** | Browse the KV store — sessions, memory slots, lifecycle timers, embeddings index — and edit values in place. |
 | **Streams** | Watch live memory writes, hook events, and observation updates as they flow through iii's WebSocket stream. |
 | **Traces** | OpenTelemetry waterfall / flame / service-breakdown views. Filter by `trace_id` to see exactly which functions, DB calls, and embedding requests a single `memory.search` produced. |
