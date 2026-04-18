@@ -7,6 +7,7 @@ interface ThresholdConfig {
   cpuCriticalPercent: number;
   memoryWarnPercent: number;
   memoryCriticalPercent: number;
+  memoryRssFloorBytes: number;
 }
 
 const DEFAULTS: ThresholdConfig = {
@@ -16,6 +17,7 @@ const DEFAULTS: ThresholdConfig = {
   cpuCriticalPercent: 90,
   memoryWarnPercent: 80,
   memoryCriticalPercent: 95,
+  memoryRssFloorBytes: 512 * 1024 * 1024,
 };
 
 export function evaluateHealth(
@@ -60,12 +62,17 @@ export function evaluateHealth(
     snapshot.memory.heapTotal > 0
       ? (snapshot.memory.heapUsed / snapshot.memory.heapTotal) * 100
       : 0;
-  if (memPercent > cfg.memoryCriticalPercent) {
-    alerts.push(`memory_critical_${Math.round(memPercent)}%`);
+  const rss = snapshot.memory.rss ?? 0;
+  const rssAboveFloor = rss >= cfg.memoryRssFloorBytes;
+  const memMb = Math.round(rss / (1024 * 1024));
+  if (memPercent > cfg.memoryCriticalPercent && rssAboveFloor) {
+    alerts.push(`memory_critical_${Math.round(memPercent)}%_rss${memMb}mb`);
     critical = true;
-  } else if (memPercent > cfg.memoryWarnPercent) {
-    alerts.push(`memory_warn_${Math.round(memPercent)}%`);
+  } else if (memPercent > cfg.memoryWarnPercent && rssAboveFloor) {
+    alerts.push(`memory_warn_${Math.round(memPercent)}%_rss${memMb}mb`);
     degraded = true;
+  } else if (memPercent > cfg.memoryWarnPercent) {
+    alerts.push(`memory_heap_tight_${Math.round(memPercent)}%_rss${memMb}mb`);
   }
 
   const status = critical ? "critical" : degraded ? "degraded" : "healthy";
