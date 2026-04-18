@@ -6,7 +6,12 @@ import { getVisibleTools } from "./tools-registry.js";
 import { getStandalonePersistPath } from "../config.js";
 import { VERSION } from "../version.js";
 import { generateId } from "../state/schema.js";
-import { resolveHandle, type Handle, type ProxyHandle } from "./rest-proxy.js";
+import {
+  resolveHandle,
+  invalidateHandle,
+  type Handle,
+  type ProxyHandle,
+} from "./rest-proxy.js";
 
 const IMPLEMENTED_TOOLS = new Set([
   "memory_save",
@@ -76,106 +81,137 @@ function textResponse(payload: unknown, pretty = false): {
   };
 }
 
-async function handleProxy(
-  toolName: string,
-  args: Record<string, unknown>,
-  handle: ProxyHandle,
-): Promise<{ content: Array<{ type: string; text: string }> }> {
+interface Validated {
+  tool: string;
+  content?: string;
+  type?: string;
+  concepts?: string[];
+  files?: string[];
+  query?: string;
+  limit?: number;
+  memoryIds?: string[];
+  reason?: string;
+}
+
+function validate(toolName: string, args: Record<string, unknown>): Validated {
+  if (!IMPLEMENTED_TOOLS.has(toolName)) {
+    throw new Error(`Unknown tool: ${toolName}`);
+  }
+  const v: Validated = { tool: toolName };
   switch (toolName) {
     case "memory_save": {
       const content = args["content"];
       if (typeof content !== "string" || !content.trim()) {
         throw new Error("content is required");
       }
-      const payload = {
-        content,
-        type: (args["type"] as string) || "fact",
-        concepts: normalizeList(args["concepts"]),
-        files: normalizeList(args["files"]),
-      };
-      const result = await handle.call("/agentmemory/remember", {
-        method: "POST",
-        body: JSON.stringify(payload),
-      });
-      return textResponse(result);
+      v.content = content;
+      v.type = (args["type"] as string) || "fact";
+      v.concepts = normalizeList(args["concepts"]);
+      v.files = normalizeList(args["files"]);
+      return v;
     }
-
     case "memory_recall":
     case "memory_smart_search": {
       const query = args["query"];
       if (typeof query !== "string" || !query.trim()) {
         throw new Error("query is required");
       }
-      const limit = parseLimit(args["limit"]);
-      const result = await handle.call("/agentmemory/smart-search", {
-        method: "POST",
-        body: JSON.stringify({ query: query.trim(), limit }),
-      });
-      return textResponse(result, true);
+      v.query = query.trim();
+      v.limit = parseLimit(args["limit"]);
+      return v;
     }
-
     case "memory_sessions": {
-      const limit = parseLimit(args["limit"], 20);
-      const result = await handle.call(
-        `/agentmemory/sessions?limit=${limit}`,
-        { method: "GET" },
-      );
-      return textResponse(result, true);
+      v.limit = parseLimit(args["limit"], 20);
+      return v;
     }
-
     case "memory_governance_delete": {
       const ids = normalizeList(args["memoryIds"]);
       if (ids.length === 0) throw new Error("memoryIds is required");
-      const result = await handle.call("/agentmemory/governance/memories", {
-        method: "POST",
-        body: JSON.stringify({
-          memoryIds: ids,
-          reason: (args["reason"] as string) || "plugin skill request",
-        }),
-      });
-      return textResponse(result);
+      v.memoryIds = ids;
+      v.reason = (args["reason"] as string) || "plugin skill request";
+      return v;
     }
-
-    case "memory_export": {
-      const result = await handle.call("/agentmemory/export", { method: "GET" });
-      return textResponse(result, true);
-    }
-
+    case "memory_export":
+      return v;
     case "memory_audit": {
-      const limit = parseLimit(args["limit"], 50);
-      const result = await handle.call(
-        `/agentmemory/audit?limit=${limit}`,
-        { method: "GET" },
-      );
-      return textResponse(result, true);
+      v.limit = parseLimit(args["limit"], 50);
+      return v;
     }
-
     default:
       throw new Error(`Unknown tool: ${toolName}`);
   }
 }
 
+async function handleProxy(
+  v: Validated,
+  handle: ProxyHandle,
+): Promise<{ content: Array<{ type: string; text: string }> }> {
+  switch (v.tool) {
+    case "memory_save": {
+      const result = await handle.call("/agentmemory/remember", {
+        method: "POST",
+        body: JSON.stringify({
+          content: v.content,
+          type: v.type,
+          concepts: v.concepts,
+          files: v.files,
+        }),
+      });
+      return textResponse(result);
+    }
+    case "memory_recall":
+    case "memory_smart_search": {
+      const result = await handle.call("/agentmemory/smart-search", {
+        method: "POST",
+        body: JSON.stringify({ query: v.query, limit: v.limit }),
+      });
+      return textResponse(result, true);
+    }
+    case "memory_sessions": {
+      const result = await handle.call(
+        `/agentmemory/sessions?limit=${v.limit}`,
+        { method: "GET" },
+      );
+      return textResponse(result, true);
+    }
+    case "memory_governance_delete": {
+      const result = await handle.call("/agentmemory/governance/memories", {
+        method: "POST",
+        body: JSON.stringify({ memoryIds: v.memoryIds, reason: v.reason }),
+      });
+      return textResponse(result);
+    }
+    case "memory_export": {
+      const result = await handle.call("/agentmemory/export", { method: "GET" });
+      return textResponse(result, true);
+    }
+    case "memory_audit": {
+      const result = await handle.call(
+        `/agentmemory/audit?limit=${v.limit}`,
+        { method: "GET" },
+      );
+      return textResponse(result, true);
+    }
+    default:
+      throw new Error(`Unknown tool: ${v.tool}`);
+  }
+}
+
 async function handleLocal(
-  toolName: string,
-  args: Record<string, unknown>,
+  v: Validated,
   kvInstance: InMemoryKV,
 ): Promise<{ content: Array<{ type: string; text: string }> }> {
-  switch (toolName) {
+  switch (v.tool) {
     case "memory_save": {
-      const rawContent = args["content"];
-      if (typeof rawContent !== "string" || !rawContent.trim()) {
-        throw new Error("content is required");
-      }
-      const content = rawContent;
       const id = generateId("mem");
       const isoNow = new Date().toISOString();
       await kvInstance.set("mem:memories", id, {
         id,
-        type: (args["type"] as string) || "fact",
-        title: content.slice(0, 80),
-        content,
-        concepts: normalizeList(args["concepts"]),
-        files: normalizeList(args["files"]),
+        type: v.type,
+        title: (v.content || "").slice(0, 80),
+        content: v.content,
+        concepts: v.concepts,
+        files: v.files,
         createdAt: isoNow,
         updatedAt: isoNow,
         strength: 7,
@@ -189,12 +225,8 @@ async function handleLocal(
 
     case "memory_recall":
     case "memory_smart_search": {
-      const rawQuery = args["query"];
-      if (typeof rawQuery !== "string" || !rawQuery.trim()) {
-        throw new Error("query is required");
-      }
-      const query = rawQuery.trim().toLowerCase();
-      const limit = parseLimit(args["limit"]);
+      const query = (v.query || "").toLowerCase();
+      const limit = v.limit ?? DEFAULT_LIMIT;
       const all =
         await kvInstance.list<Record<string, unknown>>("mem:memories");
       const results = all
@@ -212,21 +244,19 @@ async function handleLocal(
           return query.split(/\s+/).every((word) => text.includes(word));
         })
         .slice(0, limit);
-      return textResponse(results, true);
+      return textResponse({ mode: "compact", results }, true);
     }
 
     case "memory_sessions": {
       const sessions =
         await kvInstance.list<Record<string, unknown>>("mem:sessions");
-      const limit = parseLimit(args["limit"], 20);
+      const limit = v.limit ?? 20;
       return textResponse({ sessions: sessions.slice(0, limit) }, true);
     }
 
     case "memory_governance_delete": {
-      const ids = normalizeList(args["memoryIds"]);
-      if (ids.length === 0) throw new Error("memoryIds is required");
       let deleted = 0;
-      for (const id of ids) {
+      for (const id of v.memoryIds || []) {
         const existing = await kvInstance.get("mem:memories", id);
         if (existing) {
           await kvInstance.delete("mem:memories", id);
@@ -236,8 +266,8 @@ async function handleLocal(
       kvInstance.persist();
       return textResponse({
         deleted,
-        requested: ids.length,
-        reason: (args["reason"] as string) || "plugin skill request",
+        requested: (v.memoryIds || []).length,
+        reason: v.reason,
       });
     }
 
@@ -249,15 +279,17 @@ async function handleLocal(
 
     case "memory_audit": {
       const entries = await kvInstance.list("mem:audit");
-      const limit = parseLimit(args["limit"], 50);
+      const limit = v.limit ?? 50;
       return textResponse(
-        (entries as Array<Record<string, unknown>>).slice(0, limit),
+        {
+          entries: (entries as Array<Record<string, unknown>>).slice(0, limit),
+        },
         true,
       );
     }
 
     default:
-      throw new Error(`Unknown tool: ${toolName}`);
+      throw new Error(`Unknown tool: ${v.tool}`);
   }
 }
 
@@ -266,18 +298,20 @@ export async function handleToolCall(
   args: Record<string, unknown>,
   kvInstance: InMemoryKV = kv,
 ): Promise<{ content: Array<{ type: string; text: string }> }> {
+  const validated = validate(toolName, args);
   const handle = await resolveHandle();
   announceMode(handle);
   if (handle.mode === "proxy") {
     try {
-      return await handleProxy(toolName, args, handle);
+      return await handleProxy(validated, handle);
     } catch (err) {
       process.stderr.write(
-        `[@agentmemory/mcp] proxy call failed for ${toolName}: ${err instanceof Error ? err.message : String(err)}; falling back to local KV for this request\n`,
+        `[@agentmemory/mcp] proxy call failed for ${toolName}: ${err instanceof Error ? err.message : String(err)}; invalidating handle and falling back to local KV\n`,
       );
+      invalidateHandle();
     }
   }
-  return handleLocal(toolName, args, kvInstance);
+  return handleLocal(validated, kvInstance);
 }
 
 const transport = createStdioTransport(async (method, params) => {

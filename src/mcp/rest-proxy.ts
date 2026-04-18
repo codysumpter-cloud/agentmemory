@@ -1,6 +1,7 @@
 const DEFAULT_URL = "http://localhost:3111";
 const HEALTH_PROBE_TIMEOUT_MS = 500;
 const CALL_TIMEOUT_MS = 15_000;
+const LOCAL_MODE_TTL_MS = 30_000;
 
 export interface ProxyHandle {
   mode: "proxy";
@@ -15,6 +16,7 @@ export interface LocalHandle {
 export type Handle = ProxyHandle | LocalHandle;
 
 let cached: Handle | null = null;
+let cachedAt = 0;
 let probeInFlight: Promise<Handle> | null = null;
 
 function baseUrl(): string {
@@ -39,8 +41,21 @@ async function probe(url: string): Promise<boolean> {
   }
 }
 
+export function invalidateHandle(): void {
+  cached = null;
+  cachedAt = 0;
+}
+
 export async function resolveHandle(): Promise<Handle> {
-  if (cached) return cached;
+  const now = Date.now();
+  if (cached) {
+    if (cached.mode === "local" && now - cachedAt >= LOCAL_MODE_TTL_MS) {
+      cached = null;
+      cachedAt = 0;
+    } else {
+      return cached;
+    }
+  }
   if (probeInFlight) return probeInFlight;
   const url = baseUrl();
   probeInFlight = (async () => {
@@ -69,10 +84,12 @@ export async function resolveHandle(): Promise<Handle> {
         },
       };
       cached = handle;
+      cachedAt = Date.now();
       return handle;
     }
     const local: LocalHandle = { mode: "local" };
     cached = local;
+    cachedAt = Date.now();
     return local;
   })();
   try {
@@ -84,5 +101,6 @@ export async function resolveHandle(): Promise<Handle> {
 
 export function resetHandleForTests(): void {
   cached = null;
+  cachedAt = 0;
   probeInFlight = null;
 }

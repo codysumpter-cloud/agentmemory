@@ -172,9 +172,9 @@ describe("handleToolCall", () => {
       { query: "typescript" },
       kv,
     );
-    const memories = JSON.parse(result.content[0].text);
-    expect(memories).toHaveLength(1);
-    expect(memories[0].content).toBe("TypeScript is great");
+    const parsed = JSON.parse(result.content[0].text);
+    expect(parsed.results).toHaveLength(1);
+    expect(parsed.results[0].content).toBe("TypeScript is great");
   });
 
   it("memory_save accepts concepts/files as arrays (plugin skill format, #139)", async () => {
@@ -234,9 +234,9 @@ describe("handleToolCall", () => {
       { query: "bcrypt", limit: 5 },
       kv,
     );
-    const memories = JSON.parse(result.content[0].text);
-    expect(memories).toHaveLength(1);
-    expect(memories[0].content).toBe("Use bcrypt for password hashing");
+    const parsed = JSON.parse(result.content[0].text);
+    expect(parsed.results).toHaveLength(1);
+    expect(parsed.results[0].content).toBe("Use bcrypt for password hashing");
   });
 
   it("memory_smart_search rejects empty query to prevent match-all in forget flow (#139)", async () => {
@@ -276,8 +276,8 @@ describe("handleToolCall", () => {
         )
       ).content[0].text,
     );
-    expect(byFile).toHaveLength(1);
-    expect(byFile[0].files).toContain("src/auth/refresh.ts");
+    expect(byFile.results).toHaveLength(1);
+    expect(byFile.results[0].files).toContain("src/auth/refresh.ts");
 
     // Find by concept
     const byConcept = JSON.parse(
@@ -289,7 +289,7 @@ describe("handleToolCall", () => {
         )
       ).content[0].text,
     );
-    expect(byConcept).toHaveLength(1);
+    expect(byConcept.results).toHaveLength(1);
   });
 
   it("memory_sessions honours the limit arg (#139)", async () => {
@@ -323,7 +323,7 @@ describe("handleToolCall", () => {
         { query: "mem", limit: bogus },
         kv,
       );
-      expect(JSON.parse(r.content[0].text)).toHaveLength(10);
+      expect(JSON.parse(r.content[0].text).results).toHaveLength(10);
     }
 
     // An absurdly large limit gets clamped to MAX_LIMIT (100).
@@ -332,7 +332,7 @@ describe("handleToolCall", () => {
       { query: "mem", limit: 99999 },
       kv,
     );
-    expect(JSON.parse(huge.content[0].text)).toHaveLength(100);
+    expect(JSON.parse(huge.content[0].text).results).toHaveLength(100);
   });
 
   it("memory_governance_delete removes memories by id array (#139)", async () => {

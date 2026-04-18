@@ -59,7 +59,11 @@ describe("@agentmemory/mcp standalone — server proxy (issue #159)", () => {
       if (url.endsWith("/agentmemory/smart-search")) {
         const body = JSON.parse((init?.body as string) || "{}");
         return new Response(
-          JSON.stringify({ query: body.query, hits: [{ id: "m1", score: 0.9 }] }),
+          JSON.stringify({
+            mode: "compact",
+            query: body.query,
+            results: [{ id: "m1", score: 0.9 }],
+          }),
           { status: 200 },
         );
       }
@@ -68,21 +72,37 @@ describe("@agentmemory/mcp standalone — server proxy (issue #159)", () => {
     const res = await handleToolCall("memory_smart_search", { query: "auth bug", limit: 5 });
     const body = JSON.parse(res.content[0].text);
     expect(body.query).toBe("auth bug");
-    expect(body.hits[0].id).toBe("m1");
+    expect(body.results[0].id).toBe("m1");
   });
 
-  it("attaches Bearer token when AGENTMEMORY_SECRET is set", async () => {
+  it("local fallback returns the same shape as proxy for memory_smart_search", async () => {
+    installFetch(() => {
+      throw new Error("ECONNREFUSED");
+    });
+    const localKv = new InMemoryKV(undefined);
+    await handleToolCall("memory_save", { content: "shape-check entry" }, localKv);
+    const res = await handleToolCall("memory_smart_search", { query: "shape" }, localKv);
+    const body = JSON.parse(res.content[0].text);
+    expect(body).toHaveProperty("mode", "compact");
+    expect(Array.isArray(body.results)).toBe(true);
+    expect(body.results[0].content).toBe("shape-check entry");
+  });
+
+  it("attaches Bearer token on the proxied tool request, not just the probe", async () => {
     process.env["AGENTMEMORY_SECRET"] = "s3cret";
-    const seen: string[] = [];
+    const authByPath = new Map<string, string | undefined>();
     installFetch((url, init) => {
-      const auth = (init?.headers as Record<string, string> | undefined)?.["authorization"];
-      if (auth) seen.push(`${url}|${auth}`);
+      const auth = (init?.headers as Record<string, string> | undefined)?.[
+        "authorization"
+      ];
+      const u = new URL(url);
+      authByPath.set(u.pathname, auth);
       if (url.endsWith("/agentmemory/livez")) return new Response("ok", { status: 200 });
       return new Response(JSON.stringify({ sessions: [] }), { status: 200 });
     });
     await handleToolCall("memory_sessions", {});
-    expect(seen.every((s) => s.endsWith("|Bearer s3cret"))).toBe(true);
-    expect(seen.some((s) => s.includes("/agentmemory/livez"))).toBe(true);
+    expect(authByPath.get("/agentmemory/livez")).toBe("Bearer s3cret");
+    expect(authByPath.get("/agentmemory/sessions")).toBe("Bearer s3cret");
   });
 
   it("falls back to local InMemoryKV when server is unreachable", async () => {
@@ -93,23 +113,41 @@ describe("@agentmemory/mcp standalone — server proxy (issue #159)", () => {
     await handleToolCall("memory_save", { content: "local only" }, localKv);
     const recall = await handleToolCall("memory_recall", { query: "local" }, localKv);
     const out = JSON.parse(recall.content[0].text);
-    expect(Array.isArray(out)).toBe(true);
-    expect(out).toHaveLength(1);
-    expect(out[0].content).toBe("local only");
+    expect(out.mode).toBe("compact");
+    expect(out.results).toHaveLength(1);
+    expect(out.results[0].content).toBe("local only");
   });
 
-  it("falls back to local KV for a single request if proxy call throws after probe succeeded", async () => {
-    let callCount = 0;
+  it("invalidates the handle on proxy failure, so the next call re-probes", async () => {
+    let probeCount = 0;
+    let serverUp = true;
     installFetch((url) => {
-      callCount++;
-      if (url.endsWith("/agentmemory/livez")) return new Response("ok", { status: 200 });
+      if (url.endsWith("/agentmemory/livez")) {
+        probeCount++;
+        return serverUp ? new Response("ok", { status: 200 }) : new Response("", { status: 500 });
+      }
       return new Response("boom", { status: 500, statusText: "Internal Server Error" });
     });
     const localKv = new InMemoryKV(undefined);
-    await handleToolCall("memory_save", { content: "fallback entry" }, localKv);
-    const recall = await handleToolCall("memory_recall", { query: "fallback" }, localKv);
-    const out = JSON.parse(recall.content[0].text);
-    expect(out[0].content).toBe("fallback entry");
-    expect(callCount).toBeGreaterThan(1);
+    await handleToolCall("memory_save", { content: "first fallback" }, localKv);
+    expect(probeCount).toBe(1);
+    serverUp = false;
+    await handleToolCall("memory_save", { content: "second fallback" }, localKv);
+    expect(probeCount).toBe(2);
+  });
+
+  it("does not retry local after a validation error", async () => {
+    const fetchFn = installFetch((url) => {
+      if (url.endsWith("/agentmemory/livez")) return new Response("ok", { status: 200 });
+      return new Response("{}", { status: 200 });
+    });
+    const localKv = new InMemoryKV(undefined);
+    await expect(
+      handleToolCall("memory_save", { content: "" }, localKv),
+    ).rejects.toThrow("content is required");
+    const remembersCalled = fetchFn.mock.calls.some(([url]) =>
+      String(url).endsWith("/agentmemory/remember"),
+    );
+    expect(remembersCalled).toBe(false);
   });
 });
