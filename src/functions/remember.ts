@@ -4,6 +4,7 @@ import { KV, generateId, jaccardSimilarity } from "../state/schema.js";
 import { StateKV } from "../state/kv.js";
 import { withKeyedLock } from "../state/keyed-mutex.js";
 import { deleteAccessLog } from "./access-tracker.js";
+import { recordAudit } from "./audit.js";
 import { logger } from "../logger.js";
 
 export function registerRememberFunction(sdk: ISdk, kv: StateKV): void {
@@ -115,17 +116,21 @@ export function registerRememberFunction(sdk: ISdk, kv: StateKV): void {
     },
   );
 
-  sdk.registerFunction("mem::forget", 
+  sdk.registerFunction("mem::forget",
     async (data: {
       sessionId?: string;
       observationIds?: string[];
       memoryId?: string;
     }) => {
       let deleted = 0;
+      const deletedMemoryIds: string[] = [];
+      const deletedObservationIds: string[] = [];
+      let deletedSession = false;
 
       if (data.memoryId) {
         await kv.delete(KV.memories, data.memoryId);
         await deleteAccessLog(kv, data.memoryId);
+        deletedMemoryIds.push(data.memoryId);
         deleted++;
       }
 
@@ -136,6 +141,7 @@ export function registerRememberFunction(sdk: ISdk, kv: StateKV): void {
       ) {
         for (const obsId of data.observationIds) {
           await kv.delete(KV.observations(data.sessionId), obsId);
+          deletedObservationIds.push(obsId);
           deleted++;
         }
       }
@@ -150,11 +156,30 @@ export function registerRememberFunction(sdk: ISdk, kv: StateKV): void {
         );
         for (const obs of observations) {
           await kv.delete(KV.observations(data.sessionId), obs.id);
+          deletedObservationIds.push(obs.id);
           deleted++;
         }
         await kv.delete(KV.sessions, data.sessionId);
         await kv.delete(KV.summaries, data.sessionId);
+        deletedSession = true;
         deleted += 2;
+      }
+
+      if (deleted > 0) {
+        await recordAudit(
+          kv,
+          "forget",
+          "mem::forget",
+          [...deletedMemoryIds, ...deletedObservationIds],
+          {
+            sessionId: data.sessionId,
+            deleted,
+            memoriesDeleted: deletedMemoryIds.length,
+            observationsDeleted: deletedObservationIds.length,
+            sessionDeleted: deletedSession,
+            reason: "user-initiated forget",
+          },
+        );
       }
 
       logger.info("Memory forgotten", { deleted });
