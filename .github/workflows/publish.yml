@@ -3,6 +3,12 @@ name: Publish to npm
 on:
   release:
     types: [published]
+  workflow_dispatch:
+    inputs:
+      packages:
+        description: "Packages to publish (comma-separated: agentmemory,mcp,fs-watcher)"
+        required: false
+        default: "agentmemory,mcp,fs-watcher"
 
 permissions:
   contents: read
@@ -72,4 +78,31 @@ jobs:
             sleep 5
           done
           echo "ERROR: shim never propagated after 2 minutes" >&2
+          exit 1
+
+      - name: Publish @agentmemory/fs-watcher connector
+        working-directory: integrations/filesystem-watcher
+        run: |
+          FSW_VERSION=$(node -p "require('./package.json').version")
+          if npm view "@agentmemory/fs-watcher@$FSW_VERSION" version >/dev/null 2>&1; then
+            echo "fs-watcher version already published, skipping"
+          else
+            npm publish --provenance --access public
+          fi
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      - name: Wait for @agentmemory/fs-watcher registry propagation
+        working-directory: integrations/filesystem-watcher
+        run: |
+          FSW_VERSION=$(node -p "require('./package.json').version")
+          for i in $(seq 1 24); do
+            if npm view "@agentmemory/fs-watcher@$FSW_VERSION" version >/dev/null 2>&1; then
+              echo "fs-watcher propagated after ${i} attempt(s)"
+              exit 0
+            fi
+            echo "Attempt $i: not yet available, sleeping 5s..."
+            sleep 5
+          done
+          echo "ERROR: fs-watcher never propagated after 2 minutes" >&2
           exit 1
