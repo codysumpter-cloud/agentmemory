@@ -23,7 +23,7 @@ Mesh is opt-in (requires an explicit peer registration), so this affected only u
 
 Fixed in **0.8.2**:
 
-- All 4 mesh REST endpoints (`mesh-register`, `mesh-list`, `mesh-sync`, `mesh-receive`, `mesh-export`) now return 503 with `"mesh requires AGENTMEMORY_SECRET"` if the secret is not configured
+- All 5 mesh REST endpoints (`mesh-register`, `mesh-list`, `mesh-sync`, `mesh-receive`, `mesh-export`) now return 503 with `"mesh requires AGENTMEMORY_SECRET"` if the secret is not configured
 - The `mem::mesh-sync` function now accepts a `meshAuthToken` parameter and **refuses to sync at all** if the token is missing
 - Outgoing push/pull requests include `Authorization: Bearer <secret>` headers
 - Server-side, all mesh endpoints check bearer auth via the existing `checkAuth` helper

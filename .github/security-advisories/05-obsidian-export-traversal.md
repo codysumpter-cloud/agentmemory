@@ -40,6 +40,10 @@ Fixed in **0.8.2**:
 - Default export is confined to `~/.agentmemory/vault`
 - Tests added in `test/obsidian-export.test.ts` for both the custom-but-valid case and the rejection case
 
+## Known limitations
+
+`resolveVaultDir()` performs lexical containment only — it does not call `fs.realpathSync` / `fs.lstatSync`. A pre-existing symlink under `AGENTMEMORY_EXPORT_ROOT` that points outside the root can still be written through. Users who allow untrusted processes to create files inside `AGENTMEMORY_EXPORT_ROOT` should additionally run agentmemory inside a sandbox that forbids symlink creation, or file a follow-up issue requesting symlink-aware containment.
+
 ## Workarounds
 
 Users on affected versions should:
