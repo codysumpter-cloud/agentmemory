@@ -154,7 +154,7 @@ export function registerAutoForgetFunction(sdk: ISdk, kv: StateKV): void {
             result.lowValueObs.push(obs.id);
             if (!dryRun) {
               if (obs.imageData) await decrementImageRef(kv, sdk, obs.imageData);
-              if (obs.imageRef) await decrementImageRef(kv, sdk, obs.imageRef);
+              if (obs.imageRef && obs.imageRef !== obs.imageData) await decrementImageRef(kv, sdk, obs.imageRef);
               await kv
                 .delete(KV.observations(sessions[i].id), obs.id)
                 .catch(() => { });

@@ -1,5 +1,5 @@
 import { homedir } from "node:os";
-import { join, resolve } from "node:path";
+import { join, resolve, sep } from "node:path";
 import { existsSync } from "node:fs";
 import { mkdir, writeFile, unlink, utimes, stat } from "node:fs/promises";
 import { createHash } from "node:crypto";
@@ -14,7 +14,8 @@ export function getMaxBytes(): number {
 
 export function isManagedImagePath(filePath: string): boolean {
   const resolved = resolve(filePath);
-  return resolved.startsWith(IMAGES_DIR + "/") || resolved === IMAGES_DIR;
+  const normalizedImagesDir = resolve(IMAGES_DIR);
+  return resolved.startsWith(normalizedImagesDir + sep) || resolved === normalizedImagesDir;
 }
 
 function contentHash(data: string): string {
@@ -46,6 +47,10 @@ export async function saveImageToDisk(base64Data: string): Promise<{ filePath: s
 
   const hash = contentHash(cleanBase64);
   const filePath = join(IMAGES_DIR, `${hash}.${ext}`);
+
+  if (existsSync(filePath)) {
+    return { filePath, bytesWritten: 0 };
+  }
 
   const buffer = Buffer.from(cleanBase64, "base64");
   await writeFile(filePath, buffer);

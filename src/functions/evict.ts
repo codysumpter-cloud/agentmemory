@@ -96,7 +96,7 @@ export function registerEvictFunction(sdk: ISdk, kv: StateKV): void {
             stats.lowImportanceObs++;
             if (!dryRun) {
               if (o.imageData) await decrementImageRef(kv, sdk, o.imageData);
-              if (o.imageRef) await decrementImageRef(kv, sdk, o.imageRef);
+              if (o.imageRef && o.imageRef !== o.imageData) await decrementImageRef(kv, sdk, o.imageRef);
               await kv
                 .delete(KV.observations(session.id), o.id)
                 .catch(() => {});
@@ -123,7 +123,7 @@ export function registerEvictFunction(sdk: ISdk, kv: StateKV): void {
           if (!dryRun) {
             for (const o of toEvict) {
               if (o.imageData) await decrementImageRef(kv, sdk, o.imageData);
-              if (o.imageRef) await decrementImageRef(kv, sdk, o.imageRef);
+              if (o.imageRef && o.imageRef !== o.imageData) await decrementImageRef(kv, sdk, o.imageRef);
               await kv
                 .delete(KV.observations(o.sessionId), o.id)
                 .catch(() => {});

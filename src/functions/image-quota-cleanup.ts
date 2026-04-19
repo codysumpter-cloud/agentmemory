@@ -6,10 +6,8 @@ import { readdir, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { IMAGES_DIR, getMaxBytes, deleteImage } from "../utils/image-store.js";
 import { getImageRefCount } from "./image-refs.js";
+import { withKeyedLock } from "../state/keyed-mutex.js";
 
-const LOCK_KEY = "system:cleanupLockTimestamp";
-const LOCK_TTL_MS = 60_000;
-const HEARTBEAT_INTERVAL_MS = 30_000;
 const GRACE_PERIOD_MS = 30_000;
 
 export function registerImageQuotaCleanup(sdk: ISdk, kv: StateKV): void {
@@ -22,13 +20,7 @@ export function registerImageQuotaCleanup(sdk: ISdk, kv: StateKV): void {
       const ctx = getContext();
       const now = Date.now();
 
-      const lockTime = await kv.get<number>(KV.state, LOCK_KEY);
-      if (lockTime && (now - lockTime) < LOCK_TTL_MS) {
-        return { success: true, skipped: true, reason: "locked" };
-      }
-      await kv.set(KV.state, LOCK_KEY, now);
-
-      try {
+      return withKeyedLock("system:cleanupLock", async () => {
         let totalSize = 0;
         const fileStats: Array<{ filePath: string; size: number; mtimeMs: number }> = [];
 
@@ -57,7 +49,6 @@ export function registerImageQuotaCleanup(sdk: ISdk, kv: StateKV): void {
         let totalToFree = totalSize - limit;
         let evicted = 0;
         let freedBytes = 0;
-        let lastHeartbeat = Date.now();
 
         for (const f of fileStats) {
           if (totalToFree <= 0) break;
@@ -66,29 +57,26 @@ export function registerImageQuotaCleanup(sdk: ISdk, kv: StateKV): void {
             continue;
           }
 
-          let refCount = 0;
-          try {
-            refCount = await getImageRefCount(kv, f.filePath);
-          } catch (err) {
-            ctx.logger.error(`[agentmemory] Failed to read refCount for ${f.filePath}:`, err);
-          }
+          await withKeyedLock(`imgRef:${f.filePath}`, async () => {
+            let refCount = 0;
+            try {
+              refCount = await getImageRefCount(kv, f.filePath);
+            } catch (err) {
+              ctx.logger.error(`[agentmemory] Failed to read refCount for ${f.filePath}:`, err);
+            }
 
-          if (refCount > 0) {
-            continue;
-          }
+            if (refCount > 0) {
+              return;
+            }
 
-          const { deletedBytes } = await deleteImage(f.filePath);
-          if (deletedBytes > 0) {
-            sdk.triggerVoid("mem::disk-size-delta", { deltaBytes: -deletedBytes });
-            totalToFree -= deletedBytes;
-            freedBytes += deletedBytes;
-            evicted++;
-          }
-
-          if (Date.now() - lastHeartbeat > HEARTBEAT_INTERVAL_MS) {
-            await kv.set(KV.state, LOCK_KEY, Date.now());
-            lastHeartbeat = Date.now();
-          }
+            const { deletedBytes } = await deleteImage(f.filePath);
+            if (deletedBytes > 0) {
+              sdk.triggerVoid("mem::disk-size-delta", { deltaBytes: -deletedBytes });
+              totalToFree -= deletedBytes;
+              freedBytes += deletedBytes;
+              evicted++;
+            }
+          });
         }
 
         if (evicted > 0) {
@@ -97,9 +85,7 @@ export function registerImageQuotaCleanup(sdk: ISdk, kv: StateKV): void {
         }
 
         return { success: true, evicted, freedBytes };
-      } finally {
-        await kv.delete(KV.state, LOCK_KEY);
-      }
+      });
     },
   );
 }

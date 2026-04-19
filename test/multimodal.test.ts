@@ -191,30 +191,36 @@ describe("Disk Size Manager", () => {
 
   it("should trigger cleanup when total exceeds max bytes", async () => {
     const originalEnv = process.env.AGENTMEMORY_IMAGE_STORE_MAX_BYTES;
-    process.env.AGENTMEMORY_IMAGE_STORE_MAX_BYTES = "5000";
+    try {
+      process.env.AGENTMEMORY_IMAGE_STORE_MAX_BYTES = "5000";
 
-    const localKv = mockKV() as any;
-    const localTriggerVoid = vi.fn();
-    const localSdk = { triggerVoid: localTriggerVoid } as any;
+      const localKv = mockKV() as any;
+      const localTriggerVoid = vi.fn();
+      const localSdk = { triggerVoid: localTriggerVoid } as any;
 
-    let managerCallback: any = null;
-    const sdkMocker = {
-      ...localSdk,
-      registerFunction: vi.fn((config: any, cb: any) => {
-        if (config.id === "mem::disk-size-delta") managerCallback = cb;
-      }),
-    };
+      let managerCallback: any = null;
+      const sdkMocker = {
+        ...localSdk,
+        registerFunction: vi.fn((config: any, cb: any) => {
+          if (config.id === "mem::disk-size-delta") managerCallback = cb;
+        }),
+      };
 
-    const { registerDiskSizeManager } = await import("../src/functions/disk-size-manager.js");
-    registerDiskSizeManager(sdkMocker, localKv);
+      const { registerDiskSizeManager } = await import("../src/functions/disk-size-manager.js");
+      registerDiskSizeManager(sdkMocker, localKv);
 
-    await managerCallback({ deltaBytes: 3000 });
-    expect(localTriggerVoid).not.toHaveBeenCalled();
+      await managerCallback({ deltaBytes: 3000 });
+      expect(localTriggerVoid).not.toHaveBeenCalled();
 
-    await managerCallback({ deltaBytes: 3000 });
-    expect(localTriggerVoid).toHaveBeenCalledWith("mem::image-quota-cleanup", {});
-
-    process.env.AGENTMEMORY_IMAGE_STORE_MAX_BYTES = originalEnv || "";
+      await managerCallback({ deltaBytes: 3000 });
+      expect(localTriggerVoid).toHaveBeenCalledWith("mem::image-quota-cleanup", {});
+    } finally {
+      if (originalEnv === undefined) {
+        delete process.env.AGENTMEMORY_IMAGE_STORE_MAX_BYTES;
+      } else {
+        process.env.AGENTMEMORY_IMAGE_STORE_MAX_BYTES = originalEnv;
+      }
+    }
   });
 
   it("should clamp negative totals to zero", async () => {
@@ -257,21 +263,59 @@ describe("Disk Size Manager", () => {
 });
 
 describe("Image Refs", () => {
-  it("should increment and decrement ref counts correctly", async () => {
+  it("should increment and decrement ref counts correctly with deletion parity", async () => {
     const localKv = mockKV() as any;
     const localTriggerVoid = vi.fn();
     const localSdk = { triggerVoid: localTriggerVoid } as any;
 
+    const { saveImageToDisk } = await import("../src/utils/image-store.js");
     const { incrementImageRef, decrementImageRef, getImageRefCount } = await import("../src/functions/image-refs.js");
 
-    await incrementImageRef(localKv, "/fake/path/test.png");
-    expect(await getImageRefCount(localKv, "/fake/path/test.png")).toBe(1);
+    const result = await saveImageToDisk(
+      "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z/C/HgAGgwJ/lK3Q6wAAAABJRU5ErkJggg=="
+    );
+    const testFile = result.filePath;
+    
+    expect(existsSync(testFile)).toBe(true);
 
-    await incrementImageRef(localKv, "/fake/path/test.png");
-    expect(await getImageRefCount(localKv, "/fake/path/test.png")).toBe(2);
+    // Initial state
+    expect(await getImageRefCount(localKv, testFile)).toBe(0);
 
-    await decrementImageRef(localKv, localSdk, "/fake/path/test.png");
-    expect(await getImageRefCount(localKv, "/fake/path/test.png")).toBe(1);
+    // Increment to 1
+    await incrementImageRef(localKv, testFile);
+    expect(await getImageRefCount(localKv, testFile)).toBe(1);
+
+    // Increment to 2 (shared image)
+    await incrementImageRef(localKv, testFile);
+    expect(await getImageRefCount(localKv, testFile)).toBe(2);
+
+    // Decrement from 2 to 1
+    await decrementImageRef(localKv, localSdk, testFile);
+    expect(await getImageRefCount(localKv, testFile)).toBe(1);
+    
+    // (c) shared image with refcount >= 2 is NOT deleted when one decrements
+    expect(existsSync(testFile)).toBe(true);
+    expect(localTriggerVoid).not.toHaveBeenCalled();
+
+    // (a) decrementing to zero triggers image file deletion and negative delta
+    await decrementImageRef(localKv, localSdk, testFile);
+    expect(await getImageRefCount(localKv, testFile)).toBe(0);
+    expect(existsSync(testFile)).toBe(false);
+    
+    const deltaCalls = localTriggerVoid.mock.calls.filter(
+      (c: any[]) => c[0] === "mem::disk-size-delta"
+    );
+    expect(deltaCalls.length).toBe(1);
+    expect(deltaCalls[0][1].deltaBytes).toBeLessThan(0);
+
+    // (b) decrementing an already-zero/unknown ref is a no-op
+    localTriggerVoid.mockClear();
+    await decrementImageRef(localKv, localSdk, "/fake/unknown/path.png");
+    expect(await getImageRefCount(localKv, "/fake/unknown/path.png")).toBe(0);
+    const noOpDeltaCalls = localTriggerVoid.mock.calls.filter(
+      (c: any[]) => c[0] === "mem::disk-size-delta"
+    );
+    expect(noOpDeltaCalls.length).toBe(0);
   });
 });
 
@@ -305,7 +349,7 @@ describe("Image Store", () => {
     expect(testFilePath).toBeDefined();
     expect(existsSync(testFilePath!)).toBe(true);
 
-    const result = await deleteImage(testFilePath);
+    const result = await deleteImage(testFilePath!);
     expect(result.deletedBytes).toBeGreaterThan(0);
     expect(existsSync(testFilePath!)).toBe(false);
 

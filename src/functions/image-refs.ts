@@ -2,6 +2,7 @@ import type { ISdk } from "iii-sdk";
 import { KV } from "../state/schema.js";
 import { StateKV } from "../state/kv.js";
 import { deleteImage, touchImage } from "../utils/image-store.js";
+import { withKeyedLock } from "../state/keyed-mutex.js";
 
 export async function getImageRefCount(kv: StateKV, filePath: string): Promise<number> {
   const count = await kv.get<number>(KV.imageRefs, filePath);
@@ -9,20 +10,24 @@ export async function getImageRefCount(kv: StateKV, filePath: string): Promise<n
 }
 
 export async function incrementImageRef(kv: StateKV, filePath: string): Promise<void> {
-  const current = await getImageRefCount(kv, filePath);
-  await kv.set(KV.imageRefs, filePath, current + 1);
-  await touchImage(filePath);
+  return withKeyedLock(`imgRef:${filePath}`, async () => {
+    const current = await getImageRefCount(kv, filePath);
+    await kv.set(KV.imageRefs, filePath, current + 1);
+    await touchImage(filePath);
+  });
 }
 
 export async function decrementImageRef(kv: StateKV, sdk: ISdk, filePath: string): Promise<void> {
-  const current = await getImageRefCount(kv, filePath);
-  if (current <= 1) {
-    await kv.delete(KV.imageRefs, filePath);
-    const { deletedBytes } = await deleteImage(filePath);
-    if (deletedBytes > 0) {
-      sdk.triggerVoid("mem::disk-size-delta", { deltaBytes: -deletedBytes });
+  return withKeyedLock(`imgRef:${filePath}`, async () => {
+    const current = await getImageRefCount(kv, filePath);
+    if (current <= 1) {
+      await kv.delete(KV.imageRefs, filePath);
+      const { deletedBytes } = await deleteImage(filePath);
+      if (deletedBytes > 0) {
+        sdk.triggerVoid("mem::disk-size-delta", { deltaBytes: -deletedBytes });
+      }
+    } else {
+      await kv.set(KV.imageRefs, filePath, current - 1);
     }
-  } else {
-    await kv.set(KV.imageRefs, filePath, current - 1);
-  }
+  });
 }
