@@ -3,6 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
+    "gen-meta": "node scripts/gen-meta.mjs",
+    "predev": "node scripts/gen-meta.mjs",
+    "prebuild": "node scripts/gen-meta.mjs",
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
