@@ -97,7 +97,8 @@ export function Stats({
               data-suffix={s.suffix || ""}
               data-float={s.float ? "1" : "0"}
             >
-              0{s.suffix || ""}
+              {s.float ? s.target.toFixed(1) : s.target}
+              {s.suffix || ""}
             </div>
             <div className={styles.label}>{s.label}</div>
           </article>

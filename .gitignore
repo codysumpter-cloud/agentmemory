@@ -13,3 +13,4 @@ dist/
 plugin/scripts/*.map
 plugin/scripts/*.d.mts
 data/
+.gstack/
