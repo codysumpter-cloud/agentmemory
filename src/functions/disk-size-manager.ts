@@ -1,21 +1,16 @@
 import type { ISdk } from "iii-sdk";
-import { getContext } from "iii-sdk";
 import { KV } from "../state/schema.js";
 import { StateKV } from "../state/kv.js";
 import { getMaxBytes } from "../utils/image-store.js";
 import { withKeyedLock } from "../state/keyed-mutex.js";
+import { logger } from "../logger.js";
 
 const DISK_SIZE_KEY = "system:currentDiskSize";
 
 export function registerDiskSizeManager(sdk: ISdk, kv: StateKV): void {
   sdk.registerFunction(
-    {
-      id: "mem::disk-size-delta",
-      description: "Sequential single-writer manager for disk size tracking",
-    },
+    "mem::disk-size-delta",
     async (data: { deltaBytes: number }) => {
-      const ctx = getContext();
-
       if (typeof data?.deltaBytes !== "number" || !isFinite(data.deltaBytes)) {
         return { success: false, error: "deltaBytes must be a finite number" };
       }
@@ -30,7 +25,7 @@ export function registerDiskSizeManager(sdk: ISdk, kv: StateKV): void {
 
         if (data.deltaBytes > 0 && newTotal > getMaxBytes()) {
           sdk.triggerVoid("mem::image-quota-cleanup", {});
-          ctx.logger.info("[agentmemory] Disk quota exceeded, cleanup triggered", {
+          logger.info("Disk quota exceeded, cleanup triggered", {
             currentBytes: newTotal,
             maxBytes: getMaxBytes(),
           });

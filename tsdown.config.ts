@@ -19,6 +19,16 @@ const shared = {
   format: ["esm"] as const,
   target: "node20" as const,
   inlineOnly: false as const,
+  // Keep as node_modules imports. Bundling inlines relative paths like
+  // `../bin/napi-v3/darwin/arm64/onnxruntime_binding.node` that no longer
+  // resolve from dist/. CLIP + local embeddings lazy-load these anyway.
+  external: [
+    "@xenova/transformers",
+    "onnxruntime-node",
+    "onnxruntime-web",
+    "@anthropic-ai/claude-agent-sdk",
+    "@anthropic-ai/sdk",
+  ] as const,
 };
 
 export default defineConfig([
