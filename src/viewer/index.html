@@ -2834,13 +2834,51 @@
 
     var wsReconnectTimer = null;
     var wsRetries = 0;
-    var WS_MAX_RETRIES = 10;
+    var WS_MAX_RETRIES = 4;
     var directFailed = false;
     var directFailures = 0;
     var DIRECT_FAILURE_THRESHOLD = 2;
+    var pollTimer = null;
+    var POLL_INTERVAL_MS = 10000;
+
+    function setWsStatus(text, cls) {
+      var el = document.getElementById('ws-status');
+      if (!el) return;
+      el.textContent = text;
+      el.className = 'ws-status ' + cls;
+    }
+
+    function startPolling() {
+      if (pollTimer) return;
+      setWsStatus('polling · ' + (POLL_INTERVAL_MS / 1000) + 's', 'disconnected');
+      pollTimer = setInterval(function() {
+        if (state.activeTab === 'dashboard') {
+          state.dashboard.loaded = false;
+          loadDashboard();
+        } else if (state.activeTab === 'memories') {
+          state.memories.loaded = false;
+          loadMemories();
+        } else if (state.activeTab === 'sessions') {
+          state.sessions.loaded = false;
+          loadSessions();
+        } else if (state.activeTab === 'activity') {
+          state.activity.loaded = false;
+          loadActivity();
+        }
+      }, POLL_INTERVAL_MS);
+    }
+
+    function stopPolling() {
+      if (!pollTimer) return;
+      clearInterval(pollTimer);
+      pollTimer = null;
+    }
 
     function connectWs() {
-      if (wsRetries >= WS_MAX_RETRIES) return;
+      if (wsRetries >= WS_MAX_RETRIES) {
+        startPolling();
+        return;
+      }
       var useDirect = !directFailed;
       var ws;
       try {
@@ -2854,6 +2892,7 @@
         ws.onopen = function() {
           if (state.ws !== ws) return;
           wsRetries = 0;
+          stopPolling();
           if (ws.__direct) {
             directFailures = 0;
             directFailed = false;
@@ -2868,8 +2907,7 @@
               }
             }));
           }
-          document.getElementById('ws-status').textContent = 'live';
-          document.getElementById('ws-status').className = 'ws-status connected';
+          setWsStatus('live', 'connected');
         };
         ws.onmessage = function(e) {
           if (state.ws !== ws) return;
@@ -2890,13 +2928,12 @@
               directFailed = true;
             }
           }
-          document.getElementById('ws-status').textContent = 'reconnecting...';
-          document.getElementById('ws-status').className = 'ws-status disconnected';
           wsRetries++;
           if (wsRetries < WS_MAX_RETRIES) {
+            setWsStatus('connecting...', 'disconnected');
             wsReconnectTimer = setTimeout(connectWs, 2000 + Math.min(wsRetries * 1000, 8000));
           } else {
-            document.getElementById('ws-status').textContent = 'disconnected';
+            startPolling();
           }
         };
         ws.onerror = function() {
@@ -2908,6 +2945,8 @@
         wsRetries++;
         if (wsRetries < WS_MAX_RETRIES) {
           wsReconnectTimer = setTimeout(connectWs, 2000 + Math.min(wsRetries * 1000, 8000));
+        } else {
+          startPolling();
         }
       }
     }
