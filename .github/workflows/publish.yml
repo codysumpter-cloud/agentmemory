@@ -25,7 +25,15 @@ jobs:
           node-version: 22
           registry-url: https://registry.npmjs.org
 
-      - run: npm install --legacy-peer-deps --no-audit --no-fund
+      # Two-step install: generate a lockfile in-runner with
+      # --package-lock-only, then install from it with `npm ci`. Gives a
+      # single deterministic dependency graph across build / test / publish
+      # within one job run — important because the publish step below uses
+      # `--provenance`, whose attestation should match what was built and
+      # tested. We keep lockfiles gitignored at the repo level, so we
+      # intentionally do not cache this lockfile across runs.
+      - run: npm install --package-lock-only --legacy-peer-deps --no-audit --no-fund
+      - run: npm ci --legacy-peer-deps --no-audit --no-fund
       - run: npm run build
       - run: npm test
 

@@ -17,6 +17,12 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: ${{ matrix.node-version }}
-      - run: npm install --legacy-peer-deps --no-audit --no-fund
+      # Two-step install: generate a lockfile in-runner with
+      # --package-lock-only, then install from it with `npm ci`. Gives a
+      # single deterministic dependency graph across build / test within
+      # one job run. Lockfiles are gitignored at the repo level, so we
+      # intentionally do not cache it across runs.
+      - run: npm install --package-lock-only --legacy-peer-deps --no-audit --no-fund
+      - run: npm ci --legacy-peer-deps --no-audit --no-fund
       - run: npm run build
       - run: npm test
