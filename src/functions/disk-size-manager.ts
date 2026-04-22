@@ -4,8 +4,9 @@ import { StateKV } from "../state/kv.js";
 import { getMaxBytes } from "../utils/image-store.js";
 import { withKeyedLock } from "../state/keyed-mutex.js";
 import { logger } from "../logger.js";
+import type { StateScope, StateScopeKey } from "../types.js";
 
-const DISK_SIZE_KEY = "system:currentDiskSize";
+const DISK_SIZE_KEY: StateScopeKey = "system:currentDiskSize";
 
 export function registerDiskSizeManager(sdk: ISdk, kv: StateKV): void {
   sdk.registerFunction(
@@ -16,12 +17,13 @@ export function registerDiskSizeManager(sdk: ISdk, kv: StateKV): void {
       }
 
       return withKeyedLock(DISK_SIZE_KEY, async () => {
-        const currentTotal = (await kv.get<number>(KV.state, DISK_SIZE_KEY)) || 0;
+        const currentTotal =
+          (await kv.get<StateScope[typeof DISK_SIZE_KEY]>(KV.state, DISK_SIZE_KEY)) || 0;
         let newTotal = currentTotal + data.deltaBytes;
 
         if (newTotal < 0) newTotal = 0;
 
-        await kv.set(KV.state, DISK_SIZE_KEY, newTotal);
+        await kv.set<StateScope[typeof DISK_SIZE_KEY]>(KV.state, DISK_SIZE_KEY, newTotal);
 
         if (data.deltaBytes > 0 && newTotal > getMaxBytes()) {
           sdk.triggerVoid("mem::image-quota-cleanup", {});
