@@ -171,6 +171,8 @@ export function registerSkillExtractFunctions(
             existing.strength = Math.min(1.0, existing.strength + 0.15);
             existing.frequency++;
             existing.sourceSessionIds = [...existing.sourceSessionIds, data.sessionId];
+          existing.confidence = Math.min(1.0, existing.confidence + 0.05);  // Increase confidence on reinforcement
+          existing.lastUsedAt = new Date().toISOString();  // Update last used timestamp
           }
           existing.updatedAt = new Date().toISOString();
           await kv.set(KV.procedural, existing.id, existing);
@@ -197,6 +199,7 @@ export function registerSkillExtractFunctions(
 
         const now = new Date().toISOString();
         const skill: ProceduralMemory = {
+        const skill: ProceduralMemory = {
           id: fp,
           name: parsed.title,
           triggerCondition: parsed.trigger,
@@ -212,31 +215,10 @@ export function registerSkillExtractFunctions(
             .map((o) => o.id),
           createdAt: now,
           updatedAt: now,
+          confidence: 0.8,  // Initial confidence for a newly extracted skill
+          category: 'procedural',  // Default category for extracted skills
+          lastUsedAt: now,
         };
-
-        await kv.set(KV.procedural, skill.id, skill);
-
-        try {
-          await recordAudit(kv, "skill_extract", "mem::skill-extract", [], {
-            skillId: skill.id,
-            title: parsed.title,
-            steps: parsed.steps.length,
-            sessionId: data.sessionId,
-          });
-        } catch {}
-
-        logger.info("Skill extracted", {
-          id: skill.id,
-          title: parsed.title,
-          steps: parsed.steps.length,
-        });
-
-        return { success: true, extracted: true, reinforced: false, skill };
-      } catch (err) {
-        const msg = err instanceof Error ? err.message : String(err);
-        logger.error("Skill extraction failed", { error: msg });
-        return { success: false, error: msg };
-      }
     },
   );
 

@@ -443,6 +443,9 @@ export interface ProceduralMemory {
   tags?: string[];
   concepts?: string[];
   strength: number;
+  confidence: number;
+  category: string;
+  lastUsedAt: string;
   createdAt: string;
   updatedAt: string;
 }
