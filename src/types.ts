@@ -129,7 +129,7 @@ export interface ProviderConfig {
   baseURL?: string;
 }
 
-export type ProviderType = "agent-sdk" | "anthropic" | "gemini" | "openrouter" | "minimax" | "noop";
+export type ProviderType = "agent-sdk" | "anthropic" | "gemini" | "openrouter" | "minimax" | "noop" | "ollama";
 
 export interface MemoryProvider {
   name: string;
@@ -443,6 +443,9 @@ export interface ProceduralMemory {
   tags?: string[];
   concepts?: string[];
   strength: number;
+  confidence?: number;
+  category?: "procedural" | "declarative" | "conditional" | "heuristic" | "troubleshooting";
+  lastUsedAt?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -514,6 +517,7 @@ export interface AuditEntry {
     | "reflect"
     | "insight_search"
     | "skill_extract"
+    | "skill_decay"
     | "core_add"
     | "core_remove"
     | "auto_page"
@@ -839,7 +843,6 @@ export interface RetentionScore {
   reinforcementBoost: number;
   lastAccessed: string;
   accessCount: number;
-  source?: "episodic" | "semantic";
 }
 
 export interface DecayConfig {
