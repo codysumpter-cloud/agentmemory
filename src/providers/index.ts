@@ -8,6 +8,7 @@ import { AnthropicProvider } from "./anthropic.js";
 import { MinimaxProvider } from "./minimax.js";
 import { NoopProvider } from "./noop.js";
 import { OpenRouterProvider } from "./openrouter.js";
+import { OllamaProvider } from "./ollama.js";
 import { ResilientProvider } from "./resilient.js";
 import { FallbackChainProvider } from "./fallback-chain.js";
 import { getEnvVar } from "../config.js";
@@ -94,6 +95,13 @@ function createBaseProvider(config: ProviderConfig): MemoryProvider {
         config.maxTokens,
         "https://openrouter.ai/api/v1/chat/completions",
       );
+    case "ollama": {
+      return new OllamaProvider(
+        getEnvVar("OLLAMA_BASE_URL") || "http://localhost:11434",
+        config.model,
+        config.maxTokens,
+      );
+    }
     case "noop":
       return new NoopProvider();
     case "agent-sdk":

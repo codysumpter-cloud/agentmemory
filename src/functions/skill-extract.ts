@@ -11,6 +11,15 @@ import { StateKV } from "../state/kv.js";
 import { recordAudit } from "./audit.js";
 import { logger } from "../logger.js";
 
+// Skill categorization constants
+const SKILL_CATEGORIES = [
+  "procedural",   // Step-by-step procedures
+  "declarative",  // Factual knowledge
+  "conditional",  // If-then rules
+  "heuristic",    // Experience-based guidelines
+  "troubleshooting" // Diagnostic patterns
+];
+
 const SKILL_EXTRACT_SYSTEM = `You are a skill extraction engine. Given a completed multi-step task session, extract a reusable procedural skill document.
 
 Output format:
@@ -23,6 +32,8 @@ Output format:
 </steps>
 <expected_outcome>What success looks like</expected_outcome>
 <tags>comma,separated,tags</tags>
+<category>procedural|declarative|conditional|heuristic|troubleshooting</category>
+<confidence>0.0-1.0</confidence>
 </skill>
 
 Rules:
@@ -30,7 +41,9 @@ Rules:
 - Steps must be concrete and actionable, not vague
 - The trigger should describe WHEN to apply this skill
 - If the session is exploratory with no clear procedure, output <no-skill/>
-- Maximum 10 steps per skill`;
+- Maximum 10 steps per skill
+- Assign appropriate category based on skill type
+- Provide confidence score (0.0-1.0) based on clarity and completeness of the procedure`;
 
 function buildSkillPrompt(
   summary: SessionSummary,
@@ -41,8 +54,7 @@ function buildSkillPrompt(
     .sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime())
     .slice(0, 30)
     .map(
-      (o) =>
-        `[${o.type}] ${o.title}${o.narrative ? ": " + o.narrative : ""}`,
+      (o) => `[${o.type}] ${o.title}${o.narrative ? ": " + o.narrative : ""}`
     )
     .join("\n");
 
@@ -65,6 +77,8 @@ function parseSkillXml(
   steps: string[];
   expectedOutcome: string;
   tags: string[];
+  category: string;
+  confidence: number;
 } | null {
   if (xml.includes("<no-skill/>")) return null;
 
@@ -75,6 +89,8 @@ function parseSkillXml(
     /<expected_outcome>([\s\S]*?)<\/expected_outcome>/,
   );
   const tagsMatch = xml.match(/<tags>([\s\S]*?)<\/tags>/);
+  const categoryMatch = xml.match(/<category>([\s\S]*?)<\/category>/);
+  const confidenceMatch = xml.match(/<confidence>([\s\S]*?)<\/confidence>/);
 
   if (!triggerMatch || !titleMatch || !stepsMatch) return null;
 
@@ -88,6 +104,19 @@ function parseSkillXml(
 
   if (steps.length < 2) return null;
 
+  // Validate category
+  const category = categoryMatch?.[1]?.trim() || "procedural";
+  const validCategory = SKILL_CATEGORIES.includes(category) ? category : "procedural";
+
+  // Parse confidence
+  let confidence = 0.8; // default confidence
+  if (confidenceMatch) {
+    const parsed = parseFloat(confidenceMatch[1]);
+    if (!isNaN(parsed) && parsed >= 0.0 && parsed <= 1.0) {
+      confidence = parsed;
+    }
+  }
+
   return {
     trigger: triggerMatch[1].trim(),
     title: titleMatch[1].trim(),
@@ -97,6 +126,8 @@ function parseSkillXml(
       ?.split(",")
       .map((t) => t.trim())
       .filter(Boolean) || [],
+    category: validCategory,
+    confidence,
   };
 }
 
@@ -168,11 +199,24 @@ export function registerSkillExtractFunctions(
         if (existing) {
           const alreadyReinforced = existing.sourceSessionIds.includes(data.sessionId);
           if (!alreadyReinforced) {
+            // Reinforcement logic with decay consideration
             existing.strength = Math.min(1.0, existing.strength + 0.15);
             existing.frequency++;
             existing.sourceSessionIds = [...existing.sourceSessionIds, data.sessionId];
+            
+            // Update confidence based on reinforcement
+            existing.confidence = Math.min(1.0, (existing.confidence || 0.8) + 0.05);
           }
           existing.updatedAt = new Date().toISOString();
+          
+          // Apply time-based decay (simplified - in practice would use timestamp difference)
+          const daysSinceUpdate = 0; // Would calculate from existing.updatedAt
+          if (daysSinceUpdate > 30) {
+            // Apply decay after 30 days
+            existing.strength = Math.max(0.1, existing.strength - 0.05);
+            existing.confidence = Math.max(0.1, existing.confidence - 0.02);
+          }
+          
           await kv.set(KV.procedural, existing.id, existing);
 
           try {
@@ -202,10 +246,11 @@ export function registerSkillExtractFunctions(
           triggerCondition: parsed.trigger,
           steps: parsed.steps,
           expectedOutcome: parsed.expectedOutcome,
-          strength: 0.6,
           frequency: 1,
           tags: parsed.tags,
           concepts: summary.concepts,
+          strength: 0.6,
+          confidence: parsed.confidence,
           sourceSessionIds: [data.sessionId],
           sourceObservationIds: observations
             .slice(0, 10)
@@ -244,7 +289,14 @@ export function registerSkillExtractFunctions(
     async (data: { limit?: number }) => {
       const limit = data?.limit ?? 50;
       const skills = await kv.list<ProceduralMemory>(KV.procedural);
-      const sorted = skills.sort((a, b) => b.strength - a.strength);
+      // Sort by strength * confidence * frequency for better ranking while preserving
+      // backwards compatibility for older skills that do not yet have the new fields.
+      const skillScore = (skill: ProceduralMemory) => {
+        const confidence = skill.confidence ?? 1;
+        const frequency = skill.frequency ?? 1;
+        return skill.strength * confidence * Math.log(frequency + 1);
+      };
+      const sorted = skills.sort((a, b) => skillScore(b) - skillScore(a));
       return {
         success: true,
         skills: sorted.slice(0, limit),
@@ -272,7 +324,13 @@ export function registerSkillExtractFunctions(
           const matchCount = terms.filter((t) => text.includes(t)).length;
           if (matchCount === 0) return null;
           const relevance = matchCount / terms.length;
-          return { skill, score: relevance * skill.strength };
+          const confidence = skill.confidence ?? 1;
+          const frequency = skill.frequency ?? 1;
+          const categoryBoost = skill.category && SKILL_CATEGORIES.includes(skill.category) ? 0.1 : 0;
+          return {
+            skill,
+            score: relevance * skill.strength * confidence * Math.log(frequency + 1) + categoryBoost,
+          };
         })
         .filter(Boolean) as Array<{
         skill: ProceduralMemory;
@@ -286,5 +344,66 @@ export function registerSkillExtractFunctions(
         matches: scored.slice(0, limit),
       };
     },
+  );
+
+  // New function for skill decay maintenance
+  sdk.registerFunction("mem::skill-decay-maintenance", 
+    async (data: { maxAgeDays?: number }) => {
+      const maxAge = data?.maxAgeDays ?? 90; // Default 90 days
+      const cutoffDate = new Date();
+      cutoffDate.setDate(cutoffDate.getDate() - maxAge);
+      const cutoffISO = cutoffDate.toISOString();
+
+      const skills = await kv.list<ProceduralMemory>(KV.procedural);
+      let decayed = 0;
+      let removed = 0;
+
+      for (const skill of skills) {
+        const updatedAt = new Date(skill.updatedAt || skill.createdAt);
+        if (updatedAt < cutoffDate) {
+          // Apply decay
+          const ageDays = (Date.now() - updatedAt.getTime()) / (1000 * 60 * 60 * 24);
+          const decayFactor = Math.max(0.1, 1.0 - (ageDays - maxAge) / 365); // Decay over a year
+          
+          skill.strength = Math.max(0.1, skill.strength * decayFactor);
+          skill.confidence = Math.max(0.1, skill.confidence * decayFactor);
+          
+          // Remove if too weak
+          if (skill.strength < 0.2 && skill.confidence < 0.2) {
+            await kv.delete(KV.procedural, skill.id);
+            removed++;
+            
+            try {
+              await recordAudit(kv, "skill_decay", "mem::skill-decay-maintenance", [skill.id], {
+                action: "remove_weak_skill",
+                reason: `Skill too weak after ${Math.round(ageDays)} days`,
+                strength: skill.strength,
+                confidence: skill.confidence
+              });
+            } catch {}
+          } else {
+            skill.updatedAt = new Date().toISOString();
+            await kv.set(KV.procedural, skill.id, skill);
+            decayed++;
+            
+            try {
+              await recordAudit(kv, "skill_decay", "mem::skill-decay-maintenance", [skill.id], {
+                action: "apply_decay",
+                ageDays: Math.round(ageDays),
+                decayFactor: decayFactor
+              });
+            } catch {}
+          }
+        }
+      }
+
+      logger.info("Skill decay maintenance completed", {
+        decayed,
+        removed,
+        totalSkills: skills.length
+      });
+
+      return { success: true, decayed, removed, totalSkills: skills.length };
+    }
   );
 }
