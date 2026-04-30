@@ -1,8 +1,9 @@
 import { TriggerAction, type ISdk } from "iii-sdk";
-import type { HookPayload, Session } from "../types.js";
+import type { CompressedObservation, HookPayload, Session } from "../types.js";
 import { KV, STREAM } from "../state/schema.js";
 import { StateKV } from "../state/kv.js";
 import { isReflectEnabled } from "../functions/slots.js";
+import { isGraphExtractionEnabled } from "../config.js";
 import { logger } from "../logger.js";
 
 export function registerEventTriggers(sdk: ISdk, kv: StateKV): void {
@@ -50,6 +51,22 @@ export function registerEventTriggers(sdk: ISdk, kv: StateKV): void {
         sdk.triggerVoid("mem::slot-reflect", { sessionId: data.sessionId });
       } catch (err) {
         logger.warn("slot-reflect triggerVoid failed", {
+          sessionId: data.sessionId,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+    if (isGraphExtractionEnabled()) {
+      try {
+        const observations = await kv.list<CompressedObservation>(
+          KV.observations(data.sessionId),
+        );
+        const compressed = observations.filter((o) => o.title);
+        if (compressed.length > 0) {
+          sdk.triggerVoid("mem::graph-extract", { observations: compressed });
+        }
+      } catch (err) {
+        logger.warn("graph-extract triggerVoid failed", {
           sessionId: data.sessionId,
           error: err instanceof Error ? err.message : String(err),
         });

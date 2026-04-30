@@ -18,6 +18,9 @@ import { buildSyntheticCompression } from "./compress-synthetic.js";
 import { getSearchIndex } from "./search.js";
 import { logger } from "../logger.js";
 
+export const MAX_FILES_DEFAULT = 200;
+export const MAX_FILES_UPPER_BOUND = 1000;
+
 const SENSITIVE_PATH_PATTERNS: RegExp[] = [
   /(^|[\\/_.-])secret([\\/_.-]|s?$)/i,
   /(^|[\\/_.-])credentials?([\\/_.-]|$)/i,
@@ -200,10 +203,26 @@ async function loadObservations(
   return rows.map((r) => (isRawShape(r) ? r : rawFromCompressed(r as CompressedObservation)));
 }
 
-async function findJsonlFiles(root: string, limit = 200): Promise<string[]> {
+async function findJsonlFiles(
+  root: string,
+  limit = 200,
+): Promise<{
+  files: string[];
+  truncated: boolean;
+  discovered: number;
+  traversalCapped: boolean;
+}> {
   const out: string[] = [];
+  let discovered = 0;
+  let walked = 0;
+  // Hard bound on entries visited (regardless of extension) so trees
+  // dominated by non-jsonl files (node_modules, lockfiles, etc.) cannot
+  // lock the 30s function timeout. `discovered` may underrepresent the
+  // true count when traversalCapped fires — callers should surface that
+  // distinction to the user.
+  const traversalCap = Math.max(limit * 50, 50_000);
   async function walk(dir: string) {
-    if (out.length >= limit) return;
+    if (walked >= traversalCap) return;
     let names: string[];
     try {
       names = await readdir(dir);
@@ -211,7 +230,8 @@ async function findJsonlFiles(root: string, limit = 200): Promise<string[]> {
       return;
     }
     for (const name of names) {
-      if (out.length >= limit) return;
+      if (walked >= traversalCap) return;
+      walked++;
       const full = join(dir, name);
       let st;
       try {
@@ -223,12 +243,19 @@ async function findJsonlFiles(root: string, limit = 200): Promise<string[]> {
       if (st.isDirectory()) {
         await walk(full);
       } else if (st.isFile() && name.endsWith(".jsonl")) {
-        out.push(full);
+        discovered++;
+        if (out.length < limit) out.push(full);
       }
     }
   }
   await walk(root);
-  return out;
+  const traversalCapped = walked >= traversalCap;
+  return {
+    files: out,
+    truncated: discovered > out.length || traversalCapped,
+    discovered,
+    traversalCapped,
+  };
 }
 
 export function registerReplayFunctions(sdk: ISdk, kv: StateKV): void {
@@ -267,6 +294,11 @@ export function registerReplayFunctions(sdk: ISdk, kv: StateKV): void {
           imported: number;
           sessionIds: string[];
           observations: number;
+          discovered: number;
+          truncated: boolean;
+          traversalCapped: boolean;
+          maxFiles: number;
+          maxFilesUpperBound: number;
         }
       | { success: false; error: string }
     > => {
@@ -293,17 +325,43 @@ export function registerReplayFunctions(sdk: ISdk, kv: StateKV): void {
         return { success: false, error: "path not found" };
       }
 
+      // Valid integer requests are clamped to MAX_FILES_UPPER_BOUND so
+      // callers see a stable maxFiles in the response. Non-integer or
+      // <= 0 falls back to the safe default. The HTTP layer rejects
+      // out-of-range up front; this is the SDK-callable safety net.
+      const maxFiles =
+        Number.isInteger(data.maxFiles) && (data.maxFiles as number) > 0
+          ? Math.min(data.maxFiles as number, MAX_FILES_UPPER_BOUND)
+          : MAX_FILES_DEFAULT;
       let files: string[] = [];
+      let truncated = false;
+      let discovered = 0;
+      let traversalCapped = false;
       if (stat.isDirectory()) {
-        files = await findJsonlFiles(abs, data.maxFiles || 200);
+        const found = await findJsonlFiles(abs, maxFiles);
+        files = found.files;
+        truncated = found.truncated;
+        discovered = found.discovered;
+        traversalCapped = found.traversalCapped;
       } else if (stat.isFile() && abs.endsWith(".jsonl")) {
         files = [abs];
+        discovered = 1;
       } else {
         return { success: false, error: "path must be a .jsonl file or directory" };
       }
 
       if (files.length === 0) {
-        return { success: true, imported: 0, sessionIds: [], observations: 0 };
+        return {
+          success: true,
+          imported: 0,
+          sessionIds: [],
+          observations: 0,
+          discovered,
+          truncated,
+          traversalCapped,
+          maxFiles,
+          maxFilesUpperBound: MAX_FILES_UPPER_BOUND,
+        };
       }
 
       const sessionIds: string[] = [];
@@ -399,6 +457,11 @@ export function registerReplayFunctions(sdk: ISdk, kv: StateKV): void {
         imported: files.length,
         sessionIds,
         observations: observationCount,
+        discovered,
+        truncated,
+        traversalCapped,
+        maxFiles,
+        maxFilesUpperBound: MAX_FILES_UPPER_BOUND,
       };
     },
   );

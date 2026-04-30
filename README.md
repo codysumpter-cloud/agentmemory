@@ -8,7 +8,7 @@
 </p>
 
 <p align="center">
-  <a href="https://gist.github.com/rohitg00/2067ab416f7bbe447c1977edaaa681e2"><img src="https://img.shields.io/badge/Viral%20GitHub%20Gist-825%20stars%20%2F%20110%20forks-FF6B35?style=for-the-badge&logo=github&logoColor=white&labelColor=1a1a1a" alt="Design doc: 825 stars / 110 forks on the gist" /></a>
+  <a href="https://gist.github.com/rohitg00/2067ab416f7bbe447c1977edaaa681e2"><img src="https://img.shields.io/badge/Viral%20GitHub%20Gist-1050%20stars%20%2F%20150%20forks-FF6B35?style=for-the-badge&logo=github&logoColor=white&labelColor=1a1a1a" alt="Design doc: 1050 stars / 150 forks on the gist" /></a>
 </p>
 
 <p align="center">
@@ -370,7 +370,7 @@ mcp_servers:
     command: npx
     args: ["-y", "@agentmemory/mcp"]
 
-Verify with `curl http://localhost:3111/agentmemory/health`. Open http://localhost:3113 for the real-time viewer. For deeper 6-hook memory provider integration (pre-LLM context injection, turn capture, MEMORY.md mirroring, system prompt block), copy integrations/hermes from the agentmemory repo to ~/.hermes/plugins/memory/agentmemory.
+Verify with `curl http://localhost:3111/agentmemory/health`. Open http://localhost:3113 for the real-time viewer. For deeper 6-hook memory provider integration (pre-LLM context injection, turn capture, MEMORY.md mirroring, system prompt block), copy integrations/hermes from the agentmemory repo to ~/.hermes/plugins/agentmemory.
 ```
 
 Full guide: [`integrations/hermes/`](integrations/hermes/)
@@ -506,7 +506,12 @@ PostToolUse hook fires
   -> Store raw observation
   -> LLM compress -> structured facts + concepts + narrative
   -> Vector embedding (6 providers + local)
-  -> Index in BM25 + vector + knowledge graph
+  -> Index in BM25 + vector
+
+Stop / SessionEnd hook fires
+  -> Summarize session
+  -> Knowledge graph extraction (if GRAPH_EXTRACTION_ENABLED=true)
+  -> Slot reflection (if SLOT_REFLECT_ENABLED=true)
 
 SessionStart hook fires
   -> Load project profile (top concepts, files, patterns)

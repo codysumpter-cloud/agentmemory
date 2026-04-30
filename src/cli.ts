@@ -6,10 +6,10 @@ import {
   spawnSync,
   type ChildProcess,
 } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync, readlinkSync, statSync } from "node:fs";
 import { join, dirname, delimiter as PATH_DELIMITER } from "node:path";
 import { fileURLToPath } from "node:url";
-import { platform } from "node:os";
+import { homedir, platform } from "node:os";
 import * as p from "@clack/prompts";
 import { generateId } from "./state/schema.js";
 
@@ -30,11 +30,14 @@ Usage: agentmemory [command] [options]
 
 Commands:
   (default)          Start agentmemory worker
-  status             Show connection status, memory count, and health
+  status             Show connection status, memory count, flags, and health
+  doctor             Run diagnostic checks (server, flags, graph, providers)
   demo               Seed sample sessions and show recall in action
   upgrade            Upgrade local deps + iii runtime (best effort)
   mcp                Start standalone MCP server (no engine required)
   import-jsonl [p]   Import Claude Code JSONL transcripts (default: ~/.claude/projects)
+                     --max-files <N> | --max-files=<N>: override scan cap (default 200, max 1000;
+                     out-of-range is rejected; for trees >1000 files, batch by subdirectory)
 
 Options:
   --help, -h         Show this help
@@ -43,10 +46,15 @@ Options:
   --no-engine        Skip auto-starting iii-engine
   --port <N>         Override REST port (default: 3111)
 
+Environment:
+  AGENTMEMORY_URL    Full REST base URL (e.g. http://localhost:3111).
+                     Honored by status, doctor, and MCP shim commands.
+
 Quick start:
   npx @agentmemory/agentmemory          # start with local iii-engine or Docker
-  npx @agentmemory/agentmemory status   # check health
-  npx @agentmemory/agentmemory demo     # try it in 30 seconds (needs server running)
+  npx @agentmemory/agentmemory demo     # see semantic recall in 30 seconds
+  npx @agentmemory/agentmemory doctor   # diagnose config + feature flags
+  npx @agentmemory/agentmemory status   # health + memory count + flags
   npx @agentmemory/agentmemory upgrade  # upgrade agentmemory + iii runtime
   npx @agentmemory/agentmemory mcp      # standalone MCP server (no engine)
   npx @agentmemory/mcp                  # same as above (shim package)
@@ -67,12 +75,37 @@ if (portIdx !== -1 && args[portIdx + 1]) {
 const skipEngine = args.includes("--no-engine");
 
 function getRestPort(): number {
+  const url = process.env["AGENTMEMORY_URL"];
+  if (url) {
+    try {
+      const parsed = new URL(url).port;
+      if (parsed) return parseInt(parsed, 10);
+    } catch {}
+  }
   return parseInt(process.env["III_REST_PORT"] || "3111", 10) || 3111;
+}
+
+function getBaseUrl(): string {
+  const url = process.env["AGENTMEMORY_URL"];
+  if (url) return url.replace(/\/+$/, "");
+  return `http://localhost:${getRestPort()}`;
+}
+
+function getViewerUrl(): string {
+  const envUrl = process.env["AGENTMEMORY_VIEWER_URL"];
+  if (envUrl) return envUrl.replace(/\/+$/, "");
+  try {
+    const u = new URL(getBaseUrl());
+    const vPort = (parseInt(u.port || "3111", 10) || 3111) + 2;
+    return `${u.protocol}//${u.hostname}:${vPort}`;
+  } catch {
+    return `http://localhost:${getRestPort() + 2}`;
+  }
 }
 
 async function isEngineRunning(): Promise<boolean> {
   try {
-    await fetch(`http://localhost:${getRestPort()}/`, {
+    await fetch(`${getBaseUrl()}/`, {
       signal: AbortSignal.timeout(2000),
     });
     return true;
@@ -83,7 +116,7 @@ async function isEngineRunning(): Promise<boolean> {
 
 async function isAgentmemoryReady(): Promise<boolean> {
   try {
-    const res = await fetch(`http://localhost:${getRestPort()}/agentmemory/livez`, {
+    const res = await fetch(`${getBaseUrl()}/agentmemory/livez`, {
       signal: AbortSignal.timeout(2000),
     });
     return res.ok;
@@ -382,32 +415,42 @@ async function main() {
   await import("./index.js");
 }
 
+async function apiFetch<T = unknown>(base: string, path: string, timeoutMs = 5000): Promise<T | null> {
+  try {
+    const res = await fetch(`${base}/agentmemory/${path}`, { signal: AbortSignal.timeout(timeoutMs) });
+    return (await res.json()) as T;
+  } catch {
+    return null;
+  }
+}
+
 async function runStatus() {
   const port = getRestPort();
-  const base = `http://localhost:${port}`;
+  const base = getBaseUrl();
   p.intro("agentmemory status");
 
   const up = await isEngineRunning();
   if (!up) {
-    p.log.error(`Not running — no response on port ${port}`);
+    p.log.error(`Not running — no response at ${base}`);
     p.log.info("Start with: npx @agentmemory/agentmemory");
     process.exit(1);
   }
 
   try {
-    const [healthRes, sessionsRes, graphRes, memoriesRes] = await Promise.all([
-      fetch(`${base}/agentmemory/health`, { signal: AbortSignal.timeout(5000) }).then((r) => r.json()).catch(() => null),
-      fetch(`${base}/agentmemory/sessions`, { signal: AbortSignal.timeout(5000) }).then((r) => r.json()).catch(() => null),
-      fetch(`${base}/agentmemory/graph/stats`, { signal: AbortSignal.timeout(5000) }).then((r) => r.json()).catch(() => null),
-      fetch(`${base}/agentmemory/export`, { signal: AbortSignal.timeout(5000) }).then((r) => r.json()).catch(() => null),
+    const [healthRes, sessionsRes, graphRes, memoriesRes, flagsRes] = await Promise.all([
+      apiFetch<any>(base, "health"),
+      apiFetch<any>(base, "sessions"),
+      apiFetch<any>(base, "graph/stats"),
+      apiFetch<any>(base, "export"),
+      apiFetch<any>(base, "config/flags"),
     ]);
 
     const h = healthRes?.health;
     const status = healthRes?.status || "unknown";
     const version = healthRes?.version || "?";
     const sessions = Array.isArray(sessionsRes?.sessions) ? sessionsRes.sessions.length : 0;
-    const nodes = graphRes?.nodes || 0;
-    const edges = graphRes?.edges || 0;
+    const nodes = Number(graphRes?.totalNodes ?? graphRes?.nodes ?? graphRes?.nodeCount ?? 0);
+    const edges = Number(graphRes?.totalEdges ?? graphRes?.edges ?? graphRes?.edgeCount ?? 0);
     const cb = healthRes?.circuitBreaker?.state || "closed";
     const heapMB = h?.memory ? Math.round(h.memory.heapUsed / 1048576) : 0;
     const uptime = h?.uptimeSeconds ? Math.round(h.uptimeSeconds) : 0;
@@ -419,7 +462,7 @@ async function runStatus() {
     const tokensSaved = estFullTokens - estInjectedTokens;
     const pctSaved = estFullTokens > 0 ? Math.round((tokensSaved / estFullTokens) * 100) : 0;
 
-    p.log.success(`Connected — v${version} on port ${port}`);
+    p.log.success(`Connected — v${version} at ${base}`);
 
     const lines = [
       `Health:       ${status === "healthy" ? "✓ healthy" : status}`,
@@ -430,7 +473,7 @@ async function runStatus() {
       `Circuit:      ${cb}`,
       `Heap:         ${heapMB} MB`,
       `Uptime:       ${uptime}s`,
-      `Viewer:       http://localhost:${port + 2}`,
+      `Viewer:       ${getViewerUrl()}`,
     ];
 
     if (obsCount > 0) {
@@ -440,9 +483,181 @@ async function runStatus() {
       lines.push(`  Injected:     ~${estInjectedTokens.toLocaleString()} tokens`);
     }
 
+    if (flagsRes) {
+      const provider = flagsRes.provider === "llm" ? "✓ llm" : "✗ noop (no key)";
+      const embed = flagsRes.embeddingProvider === "embeddings" ? "✓ embeddings" : "bm25-only";
+      const flagRows = (flagsRes.flags || []).map((f: { key: string; enabled: boolean; label: string }) =>
+        `  ${f.enabled ? "✓" : "✗"} ${f.key.padEnd(32)} ${f.label}`
+      );
+      lines.push("");
+      lines.push(`Provider:     ${provider}`);
+      lines.push(`Embeddings:   ${embed}`);
+      lines.push(`Flags:`);
+      flagRows.forEach((r: string) => lines.push(r));
+    }
+
     p.note(lines.join("\n"), "agentmemory");
   } catch (err) {
     p.log.error(err instanceof Error ? err.message : String(err));
+    process.exit(1);
+  }
+}
+
+type DoctorCheck = { name: string; ok: boolean; hint?: string };
+
+function formatChecks(checks: DoctorCheck[]): string {
+  return checks
+    .map((c) => `${c.ok ? "✓" : "✗"} ${c.name}${c.hint ? `\n   ${c.hint}` : ""}`)
+    .join("\n");
+}
+
+type CCHooksCheck =
+  | { state: "loaded"; manifestPath?: string }
+  | { state: "not-loaded" }
+  | { state: "no-debug-log" }
+  | { state: "no-cc-dir" };
+
+function findLatestDebugLog(debugDir: string): string | undefined {
+  const latestLink = join(debugDir, "latest");
+  try {
+    if (existsSync(latestLink)) {
+      const target = readlinkSync(latestLink);
+      const resolved = target.startsWith("/") ? target : join(debugDir, target);
+      if (existsSync(resolved)) return resolved;
+    }
+  } catch {}
+
+  try {
+    const newest = readdirSync(debugDir)
+      .filter((f) => f.endsWith(".txt"))
+      .map((f) => ({ f, m: statSync(join(debugDir, f)).mtimeMs }))
+      .sort((a, b) => b.m - a.m)[0];
+    if (newest) return join(debugDir, newest.f);
+  } catch {}
+
+  return undefined;
+}
+
+function checkClaudeCodeHooks(): CCHooksCheck {
+  const debugDir = join(homedir(), ".claude", "debug");
+  if (!existsSync(debugDir)) return { state: "no-cc-dir" };
+
+  const logPath = findLatestDebugLog(debugDir);
+  if (!logPath) return { state: "no-debug-log" };
+
+  let content: string;
+  try {
+    content = readFileSync(logPath, "utf8");
+  } catch {
+    return { state: "no-debug-log" };
+  }
+
+  const match = content.match(
+    /Loaded hooks from standard location for plugin agentmemory:\s*(\S+)/
+  );
+  if (match) return { state: "loaded", manifestPath: match[1] };
+  if (content.includes("Loading hooks from plugin: agentmemory")) return { state: "loaded" };
+  return { state: "not-loaded" };
+}
+
+async function runDoctor() {
+  p.intro("agentmemory doctor");
+  const base = getBaseUrl();
+  const viewerUrl = getViewerUrl();
+  const checks: DoctorCheck[] = [];
+
+  const serverUp = await isEngineRunning();
+  checks.push({
+    name: "Server reachable",
+    ok: serverUp,
+    hint: serverUp ? undefined : `Start with: npx @agentmemory/agentmemory (tried ${base})`,
+  });
+
+  if (!serverUp) {
+    p.note(formatChecks(checks), "server unreachable");
+    process.exit(1);
+  }
+
+  const [health, flags, graph] = await Promise.all([
+    apiFetch<any>(base, "health", 3000),
+    apiFetch<any>(base, "config/flags", 3000),
+    apiFetch<any>(base, "graph/stats", 3000),
+  ]);
+
+  const viewerUp = await fetch(viewerUrl, { signal: AbortSignal.timeout(2000) })
+    .then((r) => r.ok)
+    .catch(() => false);
+
+  const hasLlm = flags?.provider === "llm";
+  const hasEmbed = flags?.embeddingProvider === "embeddings";
+  const graphNodeCount = Number(graph?.totalNodes ?? graph?.nodes ?? graph?.nodeCount ?? 0);
+  const graphHas = graphNodeCount > 0;
+
+  checks.push(
+    {
+      name: "Health status",
+      ok: health?.status === "healthy",
+      hint: health?.status === "healthy" ? undefined : `Status: ${health?.status || "unknown"}`,
+    },
+    {
+      name: "Viewer reachable",
+      ok: viewerUp,
+      hint: viewerUp ? undefined : `${viewerUrl} not responding`,
+    },
+    {
+      name: "LLM provider",
+      ok: hasLlm,
+      hint: hasLlm ? undefined : "export ANTHROPIC_API_KEY=sk-ant-... (or GEMINI/OPENROUTER/MINIMAX) then restart",
+    },
+    {
+      name: "Embedding provider",
+      ok: hasEmbed,
+      hint: hasEmbed ? undefined : "Running BM25-only. Add OPENAI_API_KEY / VOYAGE_API_KEY / COHERE_API_KEY / OLLAMA_HOST for semantic recall",
+    },
+  );
+
+  for (const f of (flags?.flags || []) as { label: string; enabled: boolean; enableHow: string }[]) {
+    checks.push({ name: f.label, ok: f.enabled, hint: f.enabled ? undefined : f.enableHow });
+  }
+
+  const cc = checkClaudeCodeHooks();
+  const ccCheck = (() => {
+    switch (cc.state) {
+      case "loaded":
+        return {
+          ok: true,
+          hint: cc.manifestPath ? `manifest: ${cc.manifestPath}` : undefined,
+        };
+      case "not-loaded":
+        return {
+          ok: false,
+          hint: "Plugin enabled but hooks not loaded by Claude Code. Try: /plugin uninstall agentmemory@agentmemory && /plugin install agentmemory@agentmemory, then restart the session. CC must be >= 2.1.x for plugin-hook auto-load.",
+        };
+      case "no-debug-log":
+        return {
+          ok: false,
+          hint: "Cannot verify — no Claude Code debug log found. Run once with `claude --debug -p \"x\"`, then re-run doctor.",
+        };
+      case "no-cc-dir":
+        return undefined;
+    }
+  })();
+  if (ccCheck) checks.push({ name: "Claude Code plugin hooks registered", ...ccCheck });
+
+  checks.push({
+    name: "Knowledge graph populated",
+    ok: graphHas,
+    hint: graphHas ? undefined : "Graph is empty. Run a session with GRAPH_EXTRACTION_ENABLED=true, or POST /agentmemory/graph/extract",
+  });
+
+  const passed = checks.filter((c) => c.ok).length;
+  const total = checks.length;
+  p.note(formatChecks(checks), `${passed}/${total} checks passing`);
+
+  if (passed === total) {
+    p.outro("✓ All checks passed. agentmemory is healthy.");
+  } else {
+    p.outro(`${total - passed} issue(s) — follow hints above to fix.`);
     process.exit(1);
   }
 }
@@ -677,7 +892,7 @@ async function runDemo() {
     `Notice: searching "database performance optimization"`,
     `found the N+1 query fix — keyword matching can't do that.`,
     "",
-    `Viewer:        http://localhost:${port + 2}`,
+    `Viewer:        ${getViewerUrl()}`,
     `Clean up with: curl -X DELETE "${base}/agentmemory/sessions?project=${demoProject}"`,
   ];
 
@@ -820,8 +1035,46 @@ async function runMcp(): Promise<void> {
 }
 
 async function runImportJsonl(): Promise<void> {
-  const nonFlagArgs = args.slice(1).filter((a) => !a.startsWith("-"));
-  const pathArg = nonFlagArgs[0];
+  // Long-form flags that take a value. Their value tokens must be
+  // consumed alongside the flag so they don't leak into positional
+  // args (e.g. `--port 3112 import-jsonl` would otherwise turn
+  // 3112 into pathArg).
+  const VALUE_FLAGS = new Set(["--port", "--tools"]);
+  let maxFiles: number | undefined;
+  const tail = args.slice(1);
+  const positional: string[] = [];
+  for (let i = 0; i < tail.length; i++) {
+    const a = tail[i]!;
+    if (a === "--max-files") {
+      const raw = tail[i + 1];
+      const parsed = raw !== undefined ? parseInt(raw, 10) : NaN;
+      if (Number.isInteger(parsed) && parsed > 0) {
+        maxFiles = parsed;
+      } else if (raw !== undefined) {
+        p.log.warn(`Ignoring --max-files ${raw}: expected a positive integer.`);
+      }
+      i++;
+      continue;
+    }
+    if (a.startsWith("--max-files=")) {
+      const raw = a.slice("--max-files=".length);
+      const parsed = parseInt(raw, 10);
+      if (Number.isInteger(parsed) && parsed > 0) {
+        maxFiles = parsed;
+      } else {
+        p.log.warn(`Ignoring --max-files=${raw}: expected a positive integer.`);
+      }
+      continue;
+    }
+    if (VALUE_FLAGS.has(a)) {
+      i++;
+      continue;
+    }
+    if (a.startsWith("-")) continue;
+    positional.push(a);
+  }
+  const pathArg = positional[0];
+
   const port = getRestPort();
   const base = `http://localhost:${port}`;
 
@@ -850,6 +1103,7 @@ async function runImportJsonl(): Promise<void> {
 
   const body: Record<string, unknown> = {};
   if (pathArg) body["path"] = pathArg;
+  if (maxFiles !== undefined) body["maxFiles"] = maxFiles;
 
   const headers: Record<string, string> = { "content-type": "application/json" };
   const secret = process.env["AGENTMEMORY_SECRET"];
@@ -873,6 +1127,11 @@ async function runImportJsonl(): Promise<void> {
       imported?: number;
       sessionIds?: string[];
       observations?: number;
+      discovered?: number;
+      truncated?: boolean;
+      traversalCapped?: boolean;
+      maxFiles?: number;
+      maxFilesUpperBound?: number;
     } = {};
     if (text.length > 0) {
       try {
@@ -910,8 +1169,35 @@ async function runImportJsonl(): Promise<void> {
     spinner.stop(
       `imported ${json.imported ?? 0} file(s), ${json.observations ?? 0} observation(s) across ${json.sessionIds?.length || 0} session(s)`,
     );
+    if (json.truncated) {
+      const cap = json.maxFiles ?? 200;
+      const upper = json.maxFilesUpperBound ?? 1000;
+      const discovered = json.discovered ?? 0;
+      const skipped = discovered - (json.imported ?? 0);
+      const discoveredLabel = json.traversalCapped
+        ? `${discovered}+ (traversal halted at safety cap)`
+        : String(discovered);
+      const baseMsg = `Hit the ${cap}-file scan cap; ${skipped} of ${discoveredLabel} discovered file(s) were skipped.`;
+      // If we already saw more than the server's hard cap (or the
+      // walker stopped early), bumping --max-files won't help on its
+      // own — recommend batching by subdirectory.
+      if (discovered > upper || json.traversalCapped) {
+        p.log.warn(
+          `${baseMsg} Tree exceeds the server's --max-files limit of ${upper}; ` +
+            `batch by subdirectory (run import-jsonl once per project under ~/.claude/projects).`,
+        );
+      } else {
+        const suggested = Math.min(
+          Math.max((discovered || cap) + 100, cap * 2),
+          upper,
+        );
+        p.log.warn(
+          `${baseMsg} Re-run with --max-files=${suggested} (max ${upper}) or batch by subdirectory.`,
+        );
+      }
+    }
     if (json.sessionIds && json.sessionIds.length > 0) {
-      p.log.info(`View at http://localhost:${port + 2} → Replay tab`);
+      p.log.info(`View at ${getViewerUrl()} → Replay tab`);
     }
   } catch (err) {
     spinner.stop("failed");
@@ -926,6 +1212,7 @@ async function runImportJsonl(): Promise<void> {
 
 const commands: Record<string, () => Promise<void>> = {
   status: runStatus,
+  doctor: runDoctor,
   demo: runDemo,
   upgrade: runUpgrade,
   mcp: runMcp,

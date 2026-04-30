@@ -8,6 +8,15 @@ import type { ResilientProvider } from "../providers/resilient.js";
 import { VERSION } from "../version.js";
 import { timingSafeCompare } from "../auth.js";
 import { renderViewerDocument } from "../viewer/document.js";
+import { MAX_FILES_UPPER_BOUND } from "../functions/replay.js";
+import {
+  isGraphExtractionEnabled,
+  isConsolidationEnabled,
+  isAutoCompressEnabled,
+  isContextInjectionEnabled,
+  detectEmbeddingProvider,
+  detectLlmProviderKind,
+} from "../config.js";
 
 type Response = {
   status_code: number;
@@ -45,6 +54,36 @@ function requireConfiguredSecret(
     status_code: 503,
     body: { error: `${feature} requires AGENTMEMORY_SECRET` },
   };
+}
+
+function flagDisabledResponse(opts: {
+  error: string;
+  flag: string;
+  enableHow: string;
+  docsHref: string;
+}): Response {
+  return {
+    status_code: 503,
+    body: opts,
+  };
+}
+
+function graphDisabledResponse(): Response {
+  return flagDisabledResponse({
+    error: "Knowledge graph not enabled",
+    flag: "GRAPH_EXTRACTION_ENABLED",
+    enableHow: "Set GRAPH_EXTRACTION_ENABLED=true and restart. Requires an LLM provider key.",
+    docsHref: "https://github.com/rohitg00/agentmemory#knowledge-graph",
+  });
+}
+
+function consolidationDisabledResponse(): Response {
+  return flagDisabledResponse({
+    error: "Consolidation pipeline not enabled",
+    flag: "CONSOLIDATION_ENABLED",
+    enableHow: "Set CONSOLIDATION_ENABLED=true and restart. Requires an LLM provider key.",
+    docsHref: "https://github.com/rohitg00/agentmemory#consolidation",
+  });
 }
 
 function asNonEmptyString(value: unknown): string | null {
@@ -100,7 +139,7 @@ export function registerApiTriggers(
     },
   );
 
-  sdk.registerFunction("api::liveness", 
+  sdk.registerFunction("api::liveness",
     async (): Promise<Response> => ({
       status_code: 200,
       body: { status: "ok", service: "agentmemory" },
@@ -110,6 +149,79 @@ export function registerApiTriggers(
     type: "http",
     function_id: "api::liveness",
     config: { api_path: "/agentmemory/livez", http_method: "GET" },
+  });
+
+  sdk.registerFunction("api::config-flags",
+    async (req: ApiRequest): Promise<Response> => {
+      const authErr = checkAuth(req, secret);
+      if (authErr) return authErr;
+      const providerKind = detectLlmProviderKind();
+      const embeddingProvider = detectEmbeddingProvider() ? "embeddings" : "none";
+      const flags = [
+        {
+          key: "GRAPH_EXTRACTION_ENABLED",
+          label: "Knowledge graph extraction",
+          enabled: isGraphExtractionEnabled(),
+          default: false,
+          affects: ["Graph", "Dashboard"],
+          needsLlm: true,
+          description: "Extracts entities and relations from observations into a knowledge graph.",
+          enableHow: "Set GRAPH_EXTRACTION_ENABLED=true and provide an LLM key, then restart.",
+          docsHref: "https://github.com/rohitg00/agentmemory#knowledge-graph",
+        },
+        {
+          key: "CONSOLIDATION_ENABLED",
+          label: "Memory consolidation",
+          enabled: isConsolidationEnabled(),
+          default: false,
+          affects: ["Dashboard", "Memories", "Crystals"],
+          needsLlm: true,
+          description: "Periodically summarizes sessions into semantic facts + procedures.",
+          enableHow: "Set CONSOLIDATION_ENABLED=true and provide an LLM key, then restart.",
+          docsHref: "https://github.com/rohitg00/agentmemory#consolidation",
+        },
+        {
+          key: "AGENTMEMORY_AUTO_COMPRESS",
+          label: "LLM-powered observation compression",
+          enabled: isAutoCompressEnabled(),
+          default: false,
+          affects: ["Memories", "Timeline"],
+          needsLlm: true,
+          description: "Every observation is compressed by the LLM for richer summaries (costs tokens). OFF uses zero-LLM synthetic compression.",
+          enableHow: "Set AGENTMEMORY_AUTO_COMPRESS=true and provide an LLM key.",
+          docsHref: "https://github.com/rohitg00/agentmemory/issues/138",
+        },
+        {
+          key: "AGENTMEMORY_INJECT_CONTEXT",
+          label: "In-conversation context injection",
+          enabled: isContextInjectionEnabled(),
+          default: false,
+          affects: ["Hooks"],
+          needsLlm: false,
+          description: "Hooks write recalled context into Claude Code's conversation. OFF captures in the background without injecting.",
+          enableHow: "Set AGENTMEMORY_INJECT_CONTEXT=true and restart.",
+          docsHref: "https://github.com/rohitg00/agentmemory/issues/143",
+        },
+      ];
+      return {
+        status_code: 200,
+        body: {
+          version: VERSION,
+          provider: providerKind,
+          embeddingProvider,
+          flags,
+        },
+      };
+    },
+  );
+  sdk.registerTrigger({
+    type: "http",
+    function_id: "api::config-flags",
+    config: {
+      api_path: "/agentmemory/config/flags",
+      http_method: "GET",
+      middleware_function_ids: ["middleware::api-auth"],
+    },
   });
 
   sdk.registerFunction("api::health", 
@@ -375,13 +487,20 @@ export function registerApiTriggers(
         payload.path = body.path.trim();
       }
       if (body.maxFiles !== undefined) {
-        if (!Number.isInteger(body.maxFiles) || (body.maxFiles as number) < 1) {
+        const n = body.maxFiles as number;
+        if (
+          !Number.isInteger(n) ||
+          n < 1 ||
+          n > MAX_FILES_UPPER_BOUND
+        ) {
           return {
             status_code: 400,
-            body: { error: "maxFiles must be a positive integer" },
+            body: {
+              error: `maxFiles must be an integer between 1 and ${MAX_FILES_UPPER_BOUND}`,
+            },
           };
         }
-        payload.maxFiles = body.maxFiles as number;
+        payload.maxFiles = n;
       }
       const result = await sdk.trigger({
         function_id: "mem::replay::import-jsonl",
@@ -945,10 +1064,7 @@ export function registerApiTriggers(
         const result = await sdk.trigger({ function_id: "mem::graph-query", payload: req.body || {} });
         return { status_code: 200, body: result };
       } catch {
-        return {
-          status_code: 404,
-          body: { error: "Knowledge graph not enabled" },
-        };
+        return graphDisabledResponse();
       }
     },
   );
@@ -966,10 +1082,7 @@ export function registerApiTriggers(
         const result = await sdk.trigger({ function_id: "mem::graph-stats", payload: {} });
         return { status_code: 200, body: result };
       } catch {
-        return {
-          status_code: 404,
-          body: { error: "Knowledge graph not enabled" },
-        };
+        return graphDisabledResponse();
       }
     },
   );
@@ -996,10 +1109,7 @@ export function registerApiTriggers(
         const result = await sdk.trigger({ function_id: "mem::graph-extract", payload: req.body });
         return { status_code: 200, body: result };
       } catch {
-        return {
-          status_code: 404,
-          body: { error: "Knowledge graph not enabled" },
-        };
+        return graphDisabledResponse();
       }
     },
   );
@@ -1018,10 +1128,7 @@ export function registerApiTriggers(
          });
         return { status_code: 200, body: result };
       } catch {
-        return {
-          status_code: 404,
-          body: { error: "Consolidation pipeline not enabled" },
-        };
+        return consolidationDisabledResponse();
       }
     },
   );
@@ -1224,7 +1331,7 @@ export function registerApiTriggers(
     config: { api_path: "/agentmemory/snapshot/restore", http_method: "POST" },
   });
 
-  sdk.registerFunction("api::memories", 
+  sdk.registerFunction("api::memories",
     async (req: ApiRequest): Promise<Response> => {
       const authErr = checkAuth(req, secret);
       if (authErr) return authErr;
@@ -1238,6 +1345,27 @@ export function registerApiTriggers(
     type: "http",
     function_id: "api::memories",
     config: { api_path: "/agentmemory/memories", http_method: "GET" },
+  });
+
+  sdk.registerFunction("api::memory-by-id",
+    async (req: ApiRequest): Promise<Response> => {
+      const authErr = checkAuth(req, secret);
+      if (authErr) return authErr;
+      const id = req.path_params?.["id"];
+      if (!id || typeof id !== "string") {
+        return { status_code: 400, body: { error: "id path parameter is required" } };
+      }
+      const memory = await kv.get<import("../types.js").Memory>(KV.memories, id);
+      if (!memory) {
+        return { status_code: 404, body: { error: `memory not found: ${id}` } };
+      }
+      return { status_code: 200, body: { memory } };
+    },
+  );
+  sdk.registerTrigger({
+    type: "http",
+    function_id: "api::memory-by-id",
+    config: { api_path: "/agentmemory/memories/:id", http_method: "GET" },
   });
 
   sdk.registerFunction("api::semantic-list",
