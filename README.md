@@ -413,12 +413,15 @@ npm install && npm run build && npm start
 
 This starts agentmemory with a local `iii-engine` if `iii` is already installed, or falls back to Docker Compose if Docker is available. REST, streams, and the viewer bind to `127.0.0.1` by default.
 
-Install `iii-engine` manually:
+Install `iii-engine` manually. **agentmemory currently pins `iii-engine` to `v0.11.2`** â€” `v0.11.6` introduces a new sandbox-everything-via-`iii worker add` model that agentmemory hasn't been refactored for yet. Pin lifts once the refactor lands. Override with `AGENTMEMORY_III_VERSION=<version>` if you've migrated to the sandbox model manually.
 
-- **macOS / Linux:** `curl -fsSL https://install.iii.dev/iii/main/install.sh | sh`
-- **Windows:** download `iii-x86_64-pc-windows-msvc.zip` from [iii-hq/iii releases](https://github.com/iii-hq/iii/releases/latest), extract `iii.exe`, add to PATH
+- **macOS arm64:** `mkdir -p ~/.local/bin && curl -fsSL https://github.com/iii-hq/iii/releases/download/iii/v0.11.2/iii-aarch64-apple-darwin.tar.gz | tar -xz -C ~/.local/bin && chmod +x ~/.local/bin/iii`
+- **macOS x64:** swap `aarch64-apple-darwin` for `x86_64-apple-darwin`
+- **Linux x64:** swap for `x86_64-unknown-linux-gnu`
+- **Linux arm64:** swap for `aarch64-unknown-linux-gnu`
+- **Windows:** download `iii-x86_64-pc-windows-msvc.zip` from [iii-hq/iii releases v0.11.2](https://github.com/iii-hq/iii/releases/tag/iii%2Fv0.11.2), extract `iii.exe`, add to PATH
 
-Or use Docker (the bundled `docker-compose.yml` pulls `iiidev/iii:latest`). Full docs: [iii.dev/docs](https://iii.dev/docs).
+Or use Docker (the bundled `docker-compose.yml` pulls `iiidev/iii:0.11.2`). Full docs: [iii.dev/docs](https://iii.dev/docs).
 
 ### Windows
 
@@ -427,7 +430,9 @@ agentmemory runs on Windows 10/11, but the Node.js package alone isn't enough â€
 **Option A â€” Prebuilt Windows binary (recommended):**
 
 ```powershell
-# 1. Open https://github.com/iii-hq/iii/releases/latest in your browser
+# 1. Open https://github.com/iii-hq/iii/releases/tag/iii%2Fv0.11.2 in your browser
+#    (we pin to v0.11.2 until agentmemory refactors for the new sandbox
+#     model that engine v0.11.6+ requires)
 # 2. Download iii-x86_64-pc-windows-msvc.zip
 #    (or iii-aarch64-pc-windows-msvc.zip if you're on an ARM machine)
 # 3. Extract iii.exe somewhere on PATH, or place it at:
@@ -435,6 +440,7 @@ agentmemory runs on Windows 10/11, but the Node.js package alone isn't enough â€
 #    (agentmemory checks that location automatically)
 # 4. Verify:
 iii --version
+# Should print: 0.11.2
 
 # 5. Then run agentmemory as usual:
 npx -y @agentmemory/agentmemory

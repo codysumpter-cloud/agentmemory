@@ -1,6 +1,15 @@
 services:
   iii-engine:
-    image: iiidev/iii:latest
+    # Pinned to v0.11.2 — the last engine that runs agentmemory's current
+    # worker model cleanly. v0.11.6 introduces a new sandbox-everything-
+    # via-`iii worker add` model that agentmemory hasn't been refactored
+    # for yet; the architectural mismatch surfaces as EPIPE reconnect
+    # loops and empty search after save. Bump only after agentmemory is
+    # refactored to register as a sandboxed worker.
+    #
+    # Override per-shell or via .env file:
+    #   AGENTMEMORY_III_VERSION=0.11.7 docker compose up
+    image: iiidev/iii:${AGENTMEMORY_III_VERSION:-0.11.2}
     ports:
       - "127.0.0.1:49134:49134"
       - "127.0.0.1:3111:3111"
