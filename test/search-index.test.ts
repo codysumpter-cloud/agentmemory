@@ -125,4 +125,32 @@ describe("SearchIndex", () => {
     expect(results[0].obsId).toBe("obs_both");
     expect(results[0].score).toBeGreaterThan(results[1].score);
   });
+
+  it("indexes and finds non-ASCII (Greek) text", () => {
+    index.add(
+      makeObs({
+        id: "obs_greek",
+        title: "Προβολή μνήμης",
+        narrative: "Δοκιμάζουμε αναζήτηση σε ελληνικά",
+        concepts: ["δοκιμή", "μνήμη"],
+      }),
+    );
+    const results = index.search("μνήμη");
+    expect(results.length).toBe(1);
+    expect(results[0].obsId).toBe("obs_greek");
+  });
+
+  it("tokenizes mixed ASCII and non-ASCII (Greek) queries", () => {
+    index.add(
+      makeObs({
+        id: "obs_mixed",
+        title: "JWT middleware ρύθμιση",
+        narrative: "Configured JWT with ελληνικά σχόλια",
+        concepts: ["auth", "jwt", "ρύθμιση"],
+      }),
+    );
+    const results = index.search("JWT ρύθμιση");
+    expect(results.length).toBe(1);
+    expect(results[0].obsId).toBe("obs_mixed");
+  });
 });
